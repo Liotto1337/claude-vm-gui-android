@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { TmuxSession } from '@shared/ipc';
 import { killSession, setViewOverride, shortPath } from '../state';
+import { useBack } from '../back-stack';
 import { ConfirmDialog } from './ConfirmDialog';
 import { IconClose, IconMenu, IconMore } from './icons';
 
@@ -11,6 +12,7 @@ import { IconClose, IconMenu, IconMore } from './icons';
 export function SessionHeader({ session, mode = 'terminal', onMenu }: { session: TmuxSession; mode?: 'chat' | 'terminal'; onMenu?: () => void }) {
   const [confirm, setConfirm] = useState(false);
   const [more, setMore] = useState(false);
+  useBack(more, () => setMore(false));
   const what = session.claudeRunning ? 'в сессии запущен claude' : `в сессии ${session.command || 'shell'}`;
   const phone = !!onMenu;
   return (

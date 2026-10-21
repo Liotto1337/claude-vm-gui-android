@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { useBack } from '../back-stack';
 
 export function ConfirmDialog(props: {
   title: string;
@@ -8,6 +9,7 @@ export function ConfirmDialog(props: {
   onCancel: () => void;
 }) {
   const id = useId();
+  useBack(true, props.onCancel);
   return (
     <div className="overlay" onKeyDown={(e) => e.key === 'Escape' && props.onCancel()}>
       <div role="dialog" aria-modal="true" aria-labelledby={id} className="dialog dialog-compact">

@@ -21,4 +21,8 @@ export interface Platform {
   secrets: Secrets;
   clipboard: { read(): Promise<string>; write(text: string): Promise<void> };
   openExternal(url: string): Promise<void>;
+  /** Кнопка «Назад» (Android) */
+  onBack?(cb: () => void): () => void;
+  /** Свернуть приложение (Android) */
+  minimize?(): void;
 }

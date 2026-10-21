@@ -1,3 +1,4 @@
+import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Clipboard } from '@capacitor/clipboard';
 import { registerPlugin } from '@capacitor/core';
@@ -35,5 +36,11 @@ export function androidPlatform(): Promise<Platform> {
       write: (string) => Clipboard.write({ string }),
     },
     openExternal: (url) => Browser.open({ url }),
+    // Свой обработчик «Назад» отключает системный (закрыть Activity)
+    onBack: (cb) => {
+      const h = App.addListener('backButton', () => cb());
+      return () => void h.then((x) => x.remove());
+    },
+    minimize: () => void App.minimizeApp(),
   });
 }

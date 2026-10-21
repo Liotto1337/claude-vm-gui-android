@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { VmConfig } from '@shared/ipc';
+import { useBack } from '../back-stack';
 import { keyToSave, passwordToSave, type PasswordMode } from '../settings-password';
 import { connect, getState, previewTheme, saveConfig, setState, useAppState } from '../state';
 
@@ -34,6 +35,8 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
     if (onClose) onClose();
     else if (getState().config) setState({ view: 'connect' });
   };
+  // Без сохранённых настроек закрыть нечего — «Назад» сворачивает приложение
+  useBack(!!config || !!onClose, cancel);
 
   return (
     <div className="overlay">

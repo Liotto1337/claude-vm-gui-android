@@ -14,9 +14,12 @@ export const localPrefs: Prefs = {
  */
 export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Platform {
   const bridge = devBridgeTransport(url);
-  const hooks: { lastLink?: string; dropConnection?: () => void } = {};
+  const hooks: { lastLink?: string; dropConnection?: () => void; back?: () => void; minimized?: number } = {};
+  const backs = new Set<() => void>();
   if (opts.testHooks) {
     hooks.dropConnection = () => void bridge.call({ op: '__drop' });
+    // Кнопка «Назад» Android и сворачивание — для E2E
+    hooks.back = () => backs.forEach((cb) => cb());
     (window as unknown as { __cvg: typeof hooks }).__cvg = hooks;
   }
   return {
@@ -34,6 +37,13 @@ export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Pl
     clipboard: {
       read: () => navigator.clipboard.readText(),
       write: (t) => navigator.clipboard.writeText(t),
+    },
+    onBack: (cb) => {
+      backs.add(cb);
+      return () => backs.delete(cb);
+    },
+    minimize: () => {
+      hooks.minimized = (hooks.minimized ?? 0) + 1;
     },
     openExternal: async (url) => {
       if (opts.testHooks) hooks.lastLink = url;

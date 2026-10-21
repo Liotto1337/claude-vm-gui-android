@@ -1,8 +1,10 @@
 import { useId, useState, type FormEvent } from 'react';
 import { validGroupName } from '@shared/layout';
+import { useBack } from '../back-stack';
 
 /** Название группы: новая или переименование. */
 export function GroupNameDialog(props: { title: string; submitLabel: string; initial?: string; onSubmit: (name: string) => void; onClose: () => void }) {
+  useBack(true, props.onClose);
   const [name, setName] = useState(props.initial ?? '');
   const id = useId();
   const valid = validGroupName(name);

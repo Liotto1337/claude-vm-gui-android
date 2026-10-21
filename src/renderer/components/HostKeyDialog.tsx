@@ -1,7 +1,9 @@
 import type { HostKeyPrompt } from '@shared/ipc';
 import { answerHostKey } from '../state';
+import { useBack } from '../back-stack';
 
 export function HostKeyDialog({ prompt }: { prompt: HostKeyPrompt }) {
+  useBack(true, () => answerHostKey(false));
   const target = prompt.port === 22 ? prompt.host : `${prompt.host}:${prompt.port}`;
   return (
     <div className="overlay">

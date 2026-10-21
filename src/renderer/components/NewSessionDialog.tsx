@@ -2,9 +2,11 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { validateSessionName } from '@shared/quote';
 import { api } from '../api';
 import { createSession } from '../state';
+import { useBack } from '../back-stack';
 
 /** group — новая сессия сразу попадает в эту группу (меню группы). */
 export function NewSessionDialog({ onClose, group }: { onClose: () => void; group?: string }) {
+  useBack(true, onClose);
   const [name, setName] = useState('');
   const [dir, setDir] = useState('~');
   const [startClaude, setStartClaude] = useState(true);

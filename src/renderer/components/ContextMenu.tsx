@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { IconChevronRight } from './icons';
+import { useBack } from '../back-stack';
 
 export interface MenuEntry {
   label: string;
@@ -13,6 +14,7 @@ export interface MenuEntry {
 
 /** Меню по ПКМ / Shift+F10: стрелки, Enter, → открывает подменю, ← и Esc закрывают. */
 export function ContextMenu(props: { label: string; x: number; y: number; items: MenuEntry[]; onClose: () => void }) {
+  useBack(true, props.onClose);
   const root = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<{ index: number; focus: boolean } | null>(null);
   const [pos, setPos] = useState({ left: props.x, top: props.y });

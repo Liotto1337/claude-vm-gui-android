@@ -215,6 +215,10 @@ export interface Api {
   platform: {
     theme(): Promise<'light' | 'dark'>;
     onThemeChange(cb: (t: 'light' | 'dark') => void): Unsubscribe;
+    /** Кнопка «Назад» Android (в браузере — хук E2E) */
+    onBack(cb: () => void): Unsubscribe;
+    /** Свернуть приложение */
+    minimize(): void;
   };
 }
 

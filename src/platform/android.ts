@@ -31,6 +31,8 @@ export interface AndroidDeps {
   prefs: Prefs;
   clipboard: Platform['clipboard'];
   openExternal(url: string): Promise<void>;
+  onBack?(cb: () => void): () => void;
+  minimize?(): void;
 }
 
 const err = (code: string, message: string) => fail(code as ErrorCode, message);
@@ -108,5 +110,7 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
     },
     clipboard: d.clipboard,
     openExternal: d.openExternal,
+    onBack: d.onBack,
+    minimize: d.minimize,
   };
 }

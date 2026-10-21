@@ -93,6 +93,8 @@ export function createApi(p: Platform): Api {
         q.addEventListener('change', h);
         return () => q.removeEventListener('change', h);
       },
+      onBack: (cb) => p.onBack?.(cb) ?? (() => {}),
+      minimize: () => p.minimize?.(),
     },
   };
 }

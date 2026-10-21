@@ -3,6 +3,8 @@ import { ConnectScreen } from './components/ConnectScreen';
 import { HostKeyDialog } from './components/HostKeyDialog';
 import { MainView } from './components/MainView';
 import { SettingsDialog } from './components/SettingsDialog';
+import { api } from './api';
+import { backPressed } from './back-stack';
 import { init, useAppState } from './state';
 
 export function App() {
@@ -10,6 +12,7 @@ export function App() {
   useEffect(() => {
     void init();
   }, []);
+  useEffect(() => api.platform.onBack(() => backPressed(() => api.platform.minimize())), []);
 
   return (
     <>

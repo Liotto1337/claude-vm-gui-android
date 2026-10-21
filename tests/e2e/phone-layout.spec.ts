@@ -102,3 +102,33 @@ async function swipe(page: Page, x: number, y: number, x2: number) {
   for (let px = x + 30; px <= x2; px += 30) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(px) });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
+
+/** «Назад» Android: в браузере — хук window.__cvg.back(); свёрнутое приложение считается в __cvg.minimized. */
+const back = (page: Page) => page.evaluate(() => (window as unknown as { __cvg: { back(): void } }).__cvg.back());
+const minimized = (page: Page) => page.evaluate(() => (window as unknown as { __cvg: { minimized?: number } }).__cvg.minimized ?? 0);
+
+test('«Назад»: диалог → список сессий → свернуть; из сессии — к списку', async () => {
+  const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
+  const { app, page } = await launchApp(
+    { CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: trustedKnownHosts(), CVG_TMUX_SOCKET: SOCK, CVG_TEST_HOOKS: '1' },
+    PHONE,
+  );
+  try {
+    await nav(page).getByRole('button', { name: 'Новая сессия' }).tap({ timeout: 20_000 });
+    await expect(page.getByRole('dialog', { name: 'Новая сессия' })).toBeVisible();
+    await back(page);
+    await expect(page.getByRole('dialog', { name: 'Новая сессия' })).toHaveCount(0);
+    expect(await minimized(page)).toBe(0);
+    await back(page);
+    expect(await minimized(page)).toBe(1);
+
+    await item(page, 'cvg-test-a').tap();
+    await expect(nav(page)).not.toBeInViewport();
+    await back(page);
+    await expect(nav(page)).toBeInViewport();
+    await back(page);
+    expect(await minimized(page)).toBe(2);
+  } finally {
+    await app.close();
+  }
+});

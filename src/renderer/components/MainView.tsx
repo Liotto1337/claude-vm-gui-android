@@ -11,6 +11,9 @@ import { Sidebar } from './Sidebar';
 import { TerminalView } from './TerminalView';
 import { Drawer } from './Drawer';
 import { usePhone } from '../use-phone';
+import { useBackContext } from '../back-stack';
+import { api } from '../api';
+import { setServerOpen } from '../state';
 
 export function MainView() {
   const { sessions, current, chat, viewOverride, serverOpen } = useAppState();
@@ -29,6 +32,13 @@ export function MainView() {
   useEffect(() => setDrawerOpen(!current), [current]);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => current && setDrawerOpen(false), [current]);
+  useBackContext({
+    serverOpen,
+    closeServer: () => setServerOpen(false),
+    drawerOpen: !phone || drawerOpen,
+    openDrawer,
+    exit: () => api.platform.minimize(),
+  });
   const sidebar = <Sidebar onNewSession={(group) => setNewSession({ group })} />;
 
   return (
