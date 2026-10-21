@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAppState } from '../state';
 import { viewMode } from '../view-mode';
 import { Banner } from './Banner';
@@ -9,6 +9,8 @@ import { SessionHeader } from './SessionHeader';
 import { ServerPanel } from './ServerPanel';
 import { Sidebar } from './Sidebar';
 import { TerminalView } from './TerminalView';
+import { Drawer } from './Drawer';
+import { usePhone } from '../use-phone';
 
 export function MainView() {
   const { sessions, current, chat, viewOverride, serverOpen } = useAppState();
@@ -21,15 +23,28 @@ export function MainView() {
     ? viewMode({ claudeRunning: session.claudeRunning, screen: c?.screen ?? null, unavailable: !!c?.unavailable, override: viewOverride })
     : 'terminal';
   const menu = mode === 'chat' && c?.screen?.kind === 'menu' ? c.screen.menu : null;
+  // Телефон: список сессий — выдвижная панель; открыта, пока сессия не выбрана, выбор её закрывает
+  const phone = usePhone();
+  const [drawerOpen, setDrawerOpen] = useState(!current);
+  useEffect(() => setDrawerOpen(!current), [current]);
+  const openDrawer = useCallback(() => setDrawerOpen(true), []);
+  const closeDrawer = useCallback(() => current && setDrawerOpen(false), [current]);
+  const sidebar = <Sidebar onNewSession={(group) => setNewSession({ group })} />;
 
   return (
     <div className="main-layout">
-      <Sidebar onNewSession={(group) => setNewSession({ group })} />
+      {phone ? (
+        <Drawer open={drawerOpen} onOpen={openDrawer} onClose={closeDrawer}>
+          {sidebar}
+        </Drawer>
+      ) : (
+        sidebar
+      )}
       <main className="main-column">
         <Banner />
         {session ? (
           <>
-            <SessionHeader session={session} mode={mode} />
+            <SessionHeader session={session} mode={mode} onMenu={phone ? openDrawer : undefined} />
             {session.claudeRunning && c?.unavailable ? (
               <div className="banner" role="status">Не удалось прочитать переписку — показан терминал</div>
             ) : null}

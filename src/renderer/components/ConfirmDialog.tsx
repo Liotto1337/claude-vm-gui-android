@@ -10,7 +10,7 @@ export function ConfirmDialog(props: {
   const id = useId();
   return (
     <div className="overlay" onKeyDown={(e) => e.key === 'Escape' && props.onCancel()}>
-      <div role="dialog" aria-modal="true" aria-labelledby={id} className="dialog">
+      <div role="dialog" aria-modal="true" aria-labelledby={id} className="dialog dialog-compact">
         <h2 id={id}>{props.title}</h2>
         <p>{props.text}</p>
         <div className="row end gap-8">

@@ -91,3 +91,17 @@ export const IconPulse = () => (
     <path d="M3 12h4l3-8 4 16 3-8h4" />
   </svg>
 );
+export const IconMenu = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" {...base} strokeWidth="2" aria-hidden="true">
+    <path d="M4 7h16" />
+    <path d="M4 12h16" />
+    <path d="M4 17h16" />
+  </svg>
+);
+export const IconMore = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </svg>
+);
