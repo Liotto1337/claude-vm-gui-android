@@ -22,4 +22,4 @@ Windows-приложение для работы с Claude Code, который 
 - [[Структура кода]] — где что лежит
 - [[История разработки]]
 
-Спецификации: `docs/superpowers/specs/2026-10-18-claude-vm-gui-design.md` (0.1), `docs/superpowers/specs/2026-10-19-claude-vm-gui-v0.2-design.md` (0.2).
+Спецификации: `docs/superpowers/specs/2026-10-18-claude-vm-gui-design.md` (0.1), `docs/superpowers/specs/2026-10-19-claude-vm-gui-v0.2-design.md` (0.2), `docs/superpowers/specs/2026-10-21-claude-vm-gui-android-design.md` (Android-форк).
