@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MetricsService } from '../../src/core/metrics';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import type { MetricsSample } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';
 
@@ -19,7 +20,7 @@ describe.skipIf(!hasTestKey)('метрики ВМ', () => {
   afterAll(() => conn.close());
 
   it('два замера: CPU 0–100, есть диск /, память, процессы', async () => {
-    const m = new MetricsService(conn, { claudeDir, slowMs: 5000, fastMs: 300 });
+    const m = new MetricsService(new NodeTransport(conn), { claudeDir, slowMs: 5000, fastMs: 300 });
     const samples: MetricsSample[] = [];
     m.on('sample', (s) => samples.push(s));
     m.start();
@@ -38,7 +39,7 @@ describe.skipIf(!hasTestKey)('метрики ВМ', () => {
   });
 
   it('первый замер без CPU (не с чем сравнить)', async () => {
-    const m = new MetricsService(conn, { claudeDir, slowMs: 5000, fastMs: 300 });
+    const m = new MetricsService(new NodeTransport(conn), { claudeDir, slowMs: 5000, fastMs: 300 });
     const samples: MetricsSample[] = [];
     m.on('sample', (s) => samples.push(s));
     m.start();
@@ -48,7 +49,7 @@ describe.skipIf(!hasTestKey)('метрики ВМ', () => {
   });
 
   it('после stop замеров нет', async () => {
-    const m = new MetricsService(conn, { claudeDir, slowMs: 200, fastMs: 200 });
+    const m = new MetricsService(new NodeTransport(conn), { claudeDir, slowMs: 200, fastMs: 200 });
     const samples: MetricsSample[] = [];
     m.on('sample', (s) => samples.push(s));
     m.start();
@@ -60,7 +61,7 @@ describe.skipIf(!hasTestKey)('метрики ВМ', () => {
   });
 
   it('сведения о системе', async () => {
-    const r = await new MetricsService(conn, { claudeDir }).info();
+    const r = await new MetricsService(new NodeTransport(conn), { claudeDir }).info();
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.data.os).toMatch(/\w/);

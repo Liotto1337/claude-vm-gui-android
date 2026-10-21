@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { readTail, TranscriptService } from '../../src/core/transcript';
 import type { ChatEvent } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';
@@ -33,7 +34,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
   it('follow отдаёт хвост, дописанная строка приходит событием', async () => {
     const path = join(dir, 'a.jsonl');
     writeFileSync(path, FIXTURE);
-    const svc = new TranscriptService(conn);
+    const svc = new TranscriptService(new NodeTransport(conn));
     const { events } = collect(svc);
     await svc.follow(path);
     expect(events[0]).toMatchObject({ reset: true, prepend: false, hasEarlier: false });
@@ -47,7 +48,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
   it('строка, дописанная по частям, собирается целиком', async () => {
     const path = join(dir, 'parts.jsonl');
     writeFileSync(path, '');
-    const svc = new TranscriptService(conn);
+    const svc = new TranscriptService(new NodeTransport(conn));
     const { events } = collect(svc);
     await svc.follow(path);
     const line = user('p-1', 'кусками');
@@ -62,7 +63,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
     const path = join(dir, 'big.jsonl');
     const lines = Array.from({ length: 30_000 }, (_, i) => user(`u${i}`, `сообщение номер ${i} ${'x'.repeat(60)}`)).join('');
     writeFileSync(path, lines);
-    const t = await readTail(conn, path, 1_572_864);
+    const t = await readTail(new NodeTransport(conn), path, 1_572_864);
     expect(t.size).toBe(Buffer.byteLength(lines));
     expect(t.start).toBeGreaterThan(0);
     for (const l of t.lines) expect(() => JSON.parse(l)).not.toThrow();
@@ -73,7 +74,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
   it('loadEarlier даёт prepend: true и доходит до начала', async () => {
     const path = join(dir, 'early.jsonl');
     writeFileSync(path, Array.from({ length: 4000 }, (_, i) => user(`e${i}`, `n${i} ${'y'.repeat(400)}`)).join(''));
-    const svc = new TranscriptService(conn, { tailBytes: 600_000 });
+    const svc = new TranscriptService(new NodeTransport(conn), { tailBytes: 600_000 });
     const { events } = collect(svc);
     await svc.follow(path);
     expect(events[0].hasEarlier).toBe(true);
@@ -92,7 +93,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
       { type: 'text', text: 'вот картинка' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(2_000_000) } },
     ] } });
     writeFileSync(path, `${user('u0', 'до картинки')}${huge}\n`);
-    const svc = new TranscriptService(conn);
+    const svc = new TranscriptService(new NodeTransport(conn));
     const { events } = collect(svc);
     await svc.follow(path);
     expect(events[0].items.map((i) => (i.kind === 'user' ? i.text : ''))).toEqual(['до картинки', 'вот картинка']);
@@ -103,7 +104,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
     const path = join(dir, 'huge-early.jsonl');
     const huge = user('big', 'B'.repeat(800_000));
     writeFileSync(path, `${user('first', 'самое первое')}${huge}${Array.from({ length: 50 }, (_, i) => user(`t${i}`, `хвост ${i}`)).join('')}`);
-    const svc = new TranscriptService(conn, { tailBytes: 300_000 });
+    const svc = new TranscriptService(new NodeTransport(conn), { tailBytes: 300_000 });
     const { events } = collect(svc);
     await svc.follow(path);
     let guard = 0;
@@ -116,7 +117,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
 
   it('файла ещё нет (новая сессия) — пустая лента, затем записи по мере появления', async () => {
     const path = join(dir, 'later.jsonl');
-    const svc = new TranscriptService(conn);
+    const svc = new TranscriptService(new NodeTransport(conn));
     const { events, unavailable } = collect(svc);
     await svc.follow(path);
     expect(unavailable).toEqual([]);
@@ -130,7 +131,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
   it('20 битых строк подряд → unavailable', async () => {
     const path = join(dir, 'bad.jsonl');
     writeFileSync(path, '{bad\n'.repeat(25));
-    const svc = new TranscriptService(conn);
+    const svc = new TranscriptService(new NodeTransport(conn));
     const { unavailable } = collect(svc);
     await svc.follow(path);
     expect(unavailable).toEqual(['Не удалось прочитать переписку']);
@@ -140,7 +141,7 @@ describe.skipIf(!hasTestKey)('журнал Claude Code по SSH', () => {
   it('после stop на ВМ не остаётся tail', async () => {
     const path = join(dir, 'stop.jsonl');
     writeFileSync(path, FIXTURE);
-    const svc = new TranscriptService(conn);
+    const svc = new TranscriptService(new NodeTransport(conn));
     await svc.follow(path);
     await sleep(300);
     expect(execSync(`pgrep -fc -- "[t]ail -c .*${path}" || true`).toString().trim()).not.toBe('0');

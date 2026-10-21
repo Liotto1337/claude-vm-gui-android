@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { utils } from 'ssh2';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ConnectionState, HostKeyPrompt, PreflightEvent } from '../../src/shared/ipc';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';
 
 const open: SshConnection[] = [];

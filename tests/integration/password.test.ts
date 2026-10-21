@@ -1,7 +1,8 @@
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Server, utils } from 'ssh2';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { tempKnownHosts, testConfig } from './helpers';
 
 // Тестовый SSH-сервер прямо в тесте: системный sshd и учётные записи не трогаем

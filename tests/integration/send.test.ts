@@ -1,7 +1,9 @@
+import { knobs } from '../../src/core/knobs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { TerminalService, type SendTimings } from '../../src/core/terminal';
 import { TmuxService } from '../../src/core/tmux';
 import { hasTestKey, tempKnownHosts, testConfig, testSessionName } from './helpers';
@@ -26,9 +28,9 @@ describe.skipIf(!hasTestKey)('отправка одним Enter', () => {
   const start = async (tag: string, env = '', opts?: ConstructorParameters<typeof TerminalService>[2]) => {
     const name = testSessionName(tag);
     created.push(name);
-    process.env.CVG_CLAUDE_CMD = `${env} node ${FAKE}`.trim();
+    knobs.claudeCmd = `${env} node ${FAKE}`.trim();
     expect((await tmux.create(name, '~', true)).ok).toBe(true);
-    const term = new TerminalService(conn, tmux, opts);
+    const term = new TerminalService(new NodeTransport(conn), tmux, opts);
     expect((await term.open(name, 100, 30)).ok).toBe(true);
     await expect.poll(() => screenOf(name), { timeout: 8000 }).toContain('enter×0');
     return { name, term };
@@ -37,11 +39,11 @@ describe.skipIf(!hasTestKey)('отправка одним Enter', () => {
   beforeAll(async () => {
     conn = new SshConnection(testConfig(), { knownHostsPath: tempKnownHosts(), askHostKey: async () => true });
     expect((await conn.connect()).ok).toBe(true);
-    tmux = new TmuxService(conn);
+    tmux = new TmuxService(new NodeTransport(conn));
   });
 
   afterAll(async () => {
-    delete process.env.CVG_CLAUDE_CMD;
+    delete knobs.claudeCmd;
     for (const n of created) await tmux.kill(n);
     conn.close();
   });

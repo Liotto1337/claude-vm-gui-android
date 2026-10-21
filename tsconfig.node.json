@@ -25,17 +25,17 @@
     }
   },
   "include": [
-    "src/main/**/*",
     "src/shared/**/*",
     "tests/**/*",
     "scripts/**/*",
     "*.config.ts",
     "*.config.mts",
     "src/core/**/*",
-    "vite.config.ts"
+    "vite.config.ts",
+    "bridge/**/*",
+    "src/platform/bridge-protocol.ts"
   ],
   "exclude": [
-    "src/main/controller.ts",
-    "tests/integration/**/*"
+    "src/main/controller.ts"
   ]
 }

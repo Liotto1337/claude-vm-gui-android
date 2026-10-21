@@ -13,8 +13,11 @@ export interface SshOptions {
   knownHostsPath: string;
   askHostKey: (p: HostKeyPrompt) => Promise<boolean>;
   onPreflight?: (e: PreflightEvent) => void;
-  /** Пароль (расшифрованный, только в главном процессе). Пробуется после ключа и ssh-agent. */
+  /** Пароль. Пробуется после ключа и ssh-agent. */
   password?: string;
+  /** Закрытый ключ текстом (импортированный); если не задан — файл cfg.keyPath */
+  privateKey?: string;
+  passphrase?: string;
 }
 
 export interface ExecResult { code: number; stdout: string; stderr: string }
@@ -48,7 +51,6 @@ export class SshConnection extends EventEmitter {
     this.closing = false;
     this.setState({ state: 'connecting' });
     const pre = await runPreflight(this.cfg, (e) => this.preflight(e));
-    this.pingMs = pre.pingMs;
     if (!pre.ok) {
       this.setState({ state: 'failed' });
       return fail('TCP_UNREACHABLE', `Порт ${this.cfg.port} на ${this.cfg.host} недоступен`);
@@ -69,9 +71,17 @@ export class SshConnection extends EventEmitter {
   private authDetail = '';
 
   private authConfig(): Pick<ConnectConfig, 'privateKey' | 'agent'> | null {
-    const keyName = this.cfg.keyPath.split(/[\\/]/).pop() ?? this.cfg.keyPath;
-    if (existsSync(this.cfg.keyPath)) {
-      const key = readFileSync(this.cfg.keyPath);
+    if (this.opts.privateKey) {
+      const parsed = utils.parseKey(this.opts.privateKey, this.opts.passphrase);
+      if (!(parsed instanceof Error)) {
+        this.authDetail = 'импортированный ключ';
+        return { privateKey: Buffer.from(this.opts.privateKey) };
+      }
+    }
+    const keyPath = this.cfg.keyPath ?? '';
+    const keyName = keyPath.split(/[\\/]/).pop() ?? keyPath;
+    if (keyPath && existsSync(keyPath)) {
+      const key = readFileSync(keyPath);
       const parsed = utils.parseKey(key);
       if (!(parsed instanceof Error)) {
         this.authDetail = keyName;
@@ -94,7 +104,7 @@ export class SshConnection extends EventEmitter {
     const username = this.cfg.username;
     const password = this.opts.password;
     const queue: { method: string; auth: AnyAuthMethod; detail: string }[] = [];
-    if (auth?.privateKey) queue.push({ method: 'publickey', auth: { type: 'publickey', username, key: auth.privateKey as Buffer }, detail: this.authDetail });
+    if (auth?.privateKey) queue.push({ method: 'publickey', auth: { type: 'publickey', username, key: auth.privateKey as Buffer, passphrase: this.opts.privateKey ? this.opts.passphrase : undefined }, detail: this.authDetail });
     if (auth?.agent) queue.push({ method: 'publickey', auth: { type: 'agent', username, agent: auth.agent as string }, detail: this.authDetail });
     if (password) {
       queue.push({ method: 'password', auth: { type: 'password', username, password }, detail: 'пароль' });

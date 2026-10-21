@@ -1,9 +1,11 @@
+import { knobs } from '../../src/core/knobs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SessionWatcher } from '../../src/core/session-watch';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { TerminalService } from '../../src/core/terminal';
 import { TmuxService } from '../../src/core/tmux';
 import type { ScreenState } from '../../src/shared/ipc';
@@ -22,10 +24,10 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
   beforeAll(async () => {
     conn = new SshConnection(testConfig(), { knownHostsPath: tempKnownHosts(), askHostKey: async () => true });
     expect((await conn.connect()).ok).toBe(true);
-    tmux = new TmuxService(conn);
+    tmux = new TmuxService(new NodeTransport(conn));
   });
   afterAll(async () => {
-    delete process.env.CVG_CLAUDE_CMD;
+    delete knobs.claudeCmd;
     for (const n of created) await tmux.kill(n);
     conn.close();
   });
@@ -33,9 +35,9 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
   const watch = async (tag: string, withClaude: boolean) => {
     const name = testSessionName(tag);
     created.push(name);
-    process.env.CVG_CLAUDE_CMD = `CVG_CLAUDE_DIR=${claudeDir} node ${FAKE}`;
+    knobs.claudeCmd = `CVG_CLAUDE_DIR=${claudeDir} node ${FAKE}`;
     expect((await tmux.create(name, '~', withClaude)).ok).toBe(true);
-    const w = new SessionWatcher(conn, { claudeDir, intervalMs: 200 });
+    const w = new SessionWatcher(new NodeTransport(conn), { claudeDir, intervalMs: 200 });
     const screens: { state: ScreenState; busy: boolean }[] = [];
     const claude: (ClaudeSessionInfo | null)[] = [];
     w.on('screen', (e) => screens.push(e));
@@ -54,7 +56,7 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
   it('меню и занятость; клавиши уходят в claude', async () => {
     const { name, w, last } = await watch('sw-menu', true);
     await expect.poll(() => last()?.state.kind, { timeout: 8000 }).toBe('prompt');
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     expect((await term.open(name, 100, 30)).ok).toBe(true);
     expect((await term.send('menu', [])).ok).toBe(true);
     await expect.poll(() => last()?.state.kind, { timeout: 5000 }).toBe('menu');
@@ -76,7 +78,7 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
     await expect.poll(() => last()?.state.kind, { timeout: 8000 }).toBe('no-claude');
     await sleep(1200);
     expect(claude.every((c) => c === null)).toBe(true);
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     expect((await term.open(name, 100, 30)).ok).toBe(true);
     expect(await term.key('enter')).toMatchObject({ ok: false, error: { code: 'NO_CLAUDE' } });
     term.close();
@@ -87,12 +89,12 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
     const name = testSessionName('sw-direct');
     created.push(name);
     await conn.exec(`tmux new-session -d -s ${name} -x 100 -y 30 'CVG_CLAUDE_DIR=${claudeDir} node ${FAKE}'`);
-    const w = new SessionWatcher(conn, { claudeDir, intervalMs: 200 });
+    const w = new SessionWatcher(new NodeTransport(conn), { claudeDir, intervalMs: 200 });
     const states: string[] = [];
     w.on('screen', (e) => states.push(e.state.kind));
     w.start(name);
     await expect.poll(() => states[states.length - 1], { timeout: 8000 }).toBe('prompt');
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     expect((await term.open(name, 100, 30)).ok).toBe(true);
     expect((await term.key('esc')).ok).toBe(true);
     term.close();
@@ -104,9 +106,9 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
     created.push(name);
     // Как npx: на переднем плане node, а claude — его дочерний процесс (внук процесса панели)
     const wrapper = `node -e "require('child_process').spawnSync('node', ['${FAKE}'], { stdio: 'inherit' })"`;
-    process.env.CVG_CLAUDE_CMD = `CVG_CLAUDE_DIR=${claudeDir} ${wrapper}`;
+    knobs.claudeCmd = `CVG_CLAUDE_DIR=${claudeDir} ${wrapper}`;
     expect((await tmux.create(name, '~', true)).ok).toBe(true);
-    const w = new SessionWatcher(conn, { claudeDir, intervalMs: 200 });
+    const w = new SessionWatcher(new NodeTransport(conn), { claudeDir, intervalMs: 200 });
     const found: (ClaudeSessionInfo | null)[] = [];
     w.on('claude', (c) => found.push(c));
     w.start(name);
@@ -118,7 +120,7 @@ describe.skipIf(!hasTestKey)('наблюдение за сессией', () => {
     const name = testSessionName('sw-nofile');
     created.push(name);
     await conn.exec(`tmux new-session -d -s ${name} -x 100 -y 30 'node ${FAKE}'`);
-    const w = new SessionWatcher(conn, { claudeDir, intervalMs: 200 });
+    const w = new SessionWatcher(new NodeTransport(conn), { claudeDir, intervalMs: 200 });
     const events: [ClaudeSessionInfo | null, boolean][] = [];
     w.on('claude', (c, running) => events.push([c, running]));
     w.start(name);

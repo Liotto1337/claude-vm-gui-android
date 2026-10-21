@@ -1,15 +1,17 @@
+import { knobs } from '../../src/core/knobs';
 import { mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { TerminalService } from '../../src/core/terminal';
 import { TmuxService } from '../../src/core/tmux';
 import type { ExitReason } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig, testSessionName } from './helpers';
 
 // Процесс cat в тестовых сессиях считается claude (как CVG_FAKE_CLAUDE в E2E)
-process.env.CVG_FAKE_CLAUDE = '1';
+knobs.fakeClaude = true;
 
 const ODD_DIR = join(homedir(), "cvg test 'q'");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -36,7 +38,7 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
     mkdirSync(ODD_DIR, { recursive: true });
     conn = new SshConnection(testConfig(), { knownHostsPath: tempKnownHosts(), askHostKey: async () => true });
     expect((await conn.connect()).ok).toBe(true);
-    tmux = new TmuxService(conn);
+    tmux = new TmuxService(new NodeTransport(conn));
     const r = await tmux.list();
     userSessionsBefore = r.ok ? r.data.map((s) => s.name).filter((n) => !n.startsWith('cvg-test-')) : [];
   });
@@ -84,7 +86,7 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
 
   it('терминал: ввод, вывод, отправка сообщений и команд', async () => {
     const name = await newSession('term');
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     let out = '';
     term.on('data', (d: string) => (out += d));
     expect(await term.open(name, 100, 30)).toEqual({ ok: true, data: undefined });
@@ -108,7 +110,7 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
 
   it('внешний kill-session открытой сессии — exit("killed")', async () => {
     const name = await newSession('killed');
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     const exits: ExitReason[] = [];
     term.on('exit', (r: ExitReason) => exits.push(r));
     expect((await term.open(name, 80, 24)).ok).toBe(true);
@@ -124,7 +126,7 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
     await conn.exec(
       `tmux new-session -d -s ${name} "printf '\\n Do you want to proceed?\\n ❯ 1. Yes\\n   2. No\\n\\n Esc to cancel\\n'; cat"`,
     );
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     expect((await term.open(name, 100, 30)).ok).toBe(true);
     await sleep(300);
     expect(await term.send('опасный текст', [])).toMatchObject({ ok: false, error: { code: 'PROMPT_OPEN' } });
@@ -139,7 +141,7 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
 
   it('в сессии bash, а не claude — текст не уходит в shell (NO_CLAUDE)', async () => {
     const name = await newSession('bash');
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     expect((await term.open(name, 100, 30)).ok).toBe(true);
     await sleep(300);
     expect(await term.send('echo PWNED-$((40+2))', [])).toMatchObject({ ok: false, error: { code: 'NO_CLAUDE' } });
@@ -154,7 +156,7 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
   it('два быстрых open подряд — остаётся один канал, к последней сессии', async () => {
     const a = await newSession('race-a');
     const b = await newSession('race-b');
-    const term = new TerminalService(conn, tmux);
+    const term = new TerminalService(new NodeTransport(conn), tmux);
     const [ra, rb] = await Promise.all([term.open(a, 80, 24), term.open(b, 80, 24)]);
     expect(ra.ok && rb.ok).toBe(true);
     await sleep(700);
@@ -170,7 +172,8 @@ describe.skipIf(!hasTestKey)('tmux и терминал', () => {
     const name = await newSession('reattach');
     const own = new SshConnection(testConfig(), { knownHostsPath: tempKnownHosts(), askHostKey: async () => true });
     expect((await own.connect()).ok).toBe(true);
-    const term = new TerminalService(own, new TmuxService(own));
+    const ot = new NodeTransport(own);
+    const term = new TerminalService(ot, new TmuxService(ot));
     const exits: ExitReason[] = [];
     term.on('exit', (r: ExitReason) => exits.push(r));
     expect((await term.open(name, 80, 24)).ok).toBe(true);

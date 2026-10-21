@@ -4,7 +4,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { HintsService } from '../../src/core/hints';
-import { SshConnection } from '../../src/main/ssh';
+import { SshConnection } from '../../bridge/ssh';
+import { NodeTransport } from '../../bridge/node-transport';
 import { UploadService } from '../../src/core/upload';
 import type { UploadProgress } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';
@@ -25,8 +26,8 @@ describe.skipIf(!hasTestKey)('подсказки и загрузка карти�
   beforeAll(async () => {
     conn = new SshConnection(testConfig(), { knownHostsPath: tempKnownHosts(), askHostKey: async () => true });
     expect((await conn.connect()).ok).toBe(true);
-    hints = new HintsService(conn);
-    upload = new UploadService(conn);
+    hints = new HintsService(new NodeTransport(conn));
+    upload = new UploadService(new NodeTransport(conn));
     projectsBefore = readdirSync(projectsDir);
   });
 
@@ -49,7 +50,7 @@ describe.skipIf(!hasTestKey)('подсказки и загрузка карти�
   });
 
   it('claude недоступен — только встроенные команды', async () => {
-    const broken = new HintsService(conn, { claudeBin: '/bin/false' });
+    const broken = new HintsService(new NodeTransport(conn), { claudeBin: '/bin/false' });
     const r = await broken.get('~');
     expect(r.ok && r.data.models).toEqual([]);
     expect(r.ok && r.data.commands.every((c) => c.source === 'builtin')).toBe(true);

@@ -1,4 +1,4 @@
-import type { ConnectionState } from '@shared/ipc';
+import type { ConnectionState, HostKeyPrompt, PreflightEvent, Result, VmConfig } from '@shared/ipc';
 
 export interface ExecResult { code: number; stdout: string; stderr: string }
 
@@ -28,4 +28,14 @@ export interface SshTransport {
   writeFile(path: string, bytes: Uint8Array, onProgress: (sent: number) => void): Promise<void>;
   on(e: 'state', cb: (s: ConnectionState) => void): () => void;
   on(e: 'lost' | 'reconnected', cb: () => void): () => void;
+}
+
+/** Транспорт, которым управляет приложение: подключение, ключ хоста, шаги проверки. */
+export interface ConnectableTransport extends SshTransport {
+  connect(cfg: VmConfig): Promise<Result<void>>;
+  close(): Promise<void>;
+  checkTcp(host: string, port: number): Promise<{ ok: boolean; ms: number | null }>;
+  onHostKey(cb: (p: HostKeyPrompt) => void): () => void;
+  answerHostKey(trust: boolean): void;
+  onPreflight(cb: (e: PreflightEvent) => void): () => void;
 }
