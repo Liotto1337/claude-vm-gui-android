@@ -12,9 +12,21 @@
     "test": "vitest run --project unit",
     "test:int": "vitest run --project integration",
     "test:e2e": "vite build && playwright test",
-    "bridge": "tsx --tsconfig tsconfig.node.json bridge/server.ts"
+    "bridge": "tsx --tsconfig tsconfig.node.json bridge/server.ts",
+    "android:web": "vite build --mode android && node scripts/check-no-devbridge.mjs dist",
+    "android:build": "npm run android:web && bash -c '. scripts/android-env.sh && npx cap sync android && cd android && ./gradlew -q assembleDebug'",
+    "android:run": "npm run android:web && bash -c '. scripts/android-env.sh && npx cap run android'",
+    "test:android": "bash -c '. scripts/android-env.sh && cd android && ./gradlew -q testDebugUnitTest'"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/browser": "8.0.5",
+    "@capacitor/clipboard": "8.0.1",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/keyboard": "8.0.6",
+    "@capacitor/preferences": "8.0.1",
+    "@capacitor/status-bar": "8.0.4",
     "@fontsource/jetbrains-mono": "5.3.0",
     "@fontsource/source-serif-4": "5.3.1",
     "@xterm/addon-fit": "0.11.0",
@@ -25,6 +37,8 @@
     "remark-gfm": "4.0.1"
   },
   "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.3",
     "@playwright/test": "1.64.1",
     "@types/node": "22.19.1",
     "@types/react": "19.3.0",
