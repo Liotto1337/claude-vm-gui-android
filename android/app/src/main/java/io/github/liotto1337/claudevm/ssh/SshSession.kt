@@ -202,7 +202,17 @@ class SshSession(
     }
 
     private fun authMethod(c: SSHClient, name: String, key: String?, password: String?): Pair<String, AuthMethod>? = when (name) {
-        "publickey" -> key?.let { k -> runCatching { "импортированный ключ" to AuthPublickey(c.loadKeys(k, null, null)) }.getOrNull() }
+        "publickey" -> key?.let { k ->
+            // Ключ с парольной фразой хранится как есть, фраза — отдельным секретом
+            val phrase = secrets.read("passphrase")?.takeIf { it.isNotEmpty() }
+            val finder = phrase?.let { p ->
+                object : PasswordFinder {
+                    override fun reqPassword(resource: Resource<*>?) = p.toCharArray()
+                    override fun shouldRetry(resource: Resource<*>?) = false
+                }
+            }
+            runCatching { "импортированный ключ" to AuthPublickey(c.loadKeys(k, null, finder)) }.getOrNull()
+        }
         "password" -> password?.let { p ->
             "пароль" to AuthPassword(object : PasswordFinder {
                 override fun reqPassword(resource: Resource<*>?) = p.toCharArray()

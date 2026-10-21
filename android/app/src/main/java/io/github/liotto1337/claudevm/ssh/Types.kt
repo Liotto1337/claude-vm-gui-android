@@ -13,7 +13,7 @@ sealed class SshResult {
 /** Вопрос про ключ хоста, как HostKeyPrompt в интерфейсе. kind — unknown или mismatch. */
 data class HostKeyPrompt(val host: String, val port: Int, val kind: String, val fingerprint: String, val knownFingerprint: String? = null)
 
-/** Пароль и закрытый ключ (расшифрованный): name — "password" или "key". */
+/** Секреты для входа: name — "password", "key" (закрытый ключ как импортирован) или "passphrase" (его парольная фраза). */
 fun interface SecretSource {
     fun read(name: String): String?
 }

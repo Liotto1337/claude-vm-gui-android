@@ -27,11 +27,12 @@ class SshSessionTest {
         override fun onState(state: String, attempt: Int?) { events.add("state:$state") }
         override fun onLost() { events.add("lost") }
         override fun onReconnected() { events.add("reconnected") }
-        override fun onData(ch: Int, seq: Int, bytes: ByteArray) {
-            out.getOrPut(ch) { java.io.ByteArrayOutputStream() }.write(bytes); seqs.getOrPut(ch) { mutableListOf() }.add(seq)
+        // stdout и stderr приходят из разных нитей: getOrPut у synchronizedMap не атомарен
+        override fun onData(ch: Int, seq: Int, bytes: ByteArray) = synchronized(this) {
+            out.getOrPut(ch) { java.io.ByteArrayOutputStream() }.write(bytes); seqs.getOrPut(ch) { mutableListOf() }.add(seq); Unit
         }
-        override fun onStderr(ch: Int, seq: Int, bytes: ByteArray) {
-            err.getOrPut(ch) { java.io.ByteArrayOutputStream() }.write(bytes); seqs.getOrPut(ch) { mutableListOf() }.add(seq)
+        override fun onStderr(ch: Int, seq: Int, bytes: ByteArray) = synchronized(this) {
+            err.getOrPut(ch) { java.io.ByteArrayOutputStream() }.write(bytes); seqs.getOrPut(ch) { mutableListOf() }.add(seq); Unit
         }
         override fun onClose(ch: Int) { closed.add(ch) }
         fun text(ch: Int) = out[ch]?.toString(Charsets.UTF_8) ?: ""
@@ -69,6 +70,16 @@ class SshSessionTest {
         val rec2 = Recorder()
         assertEquals(SshResult.Ok, session(rec2, known = known).connect(interactive = true))
         assertEquals(0, rec2.prompts.size)
+    }
+
+    @Test fun `ключ с парольной фразой — фраза из секретов`() = runBlocking {
+        val copy = Files.createTempDirectory("key").resolve("k").toFile()
+        Fixtures.testKey.copyTo(copy)
+        copy.setReadable(false, false); copy.setReadable(true, true)
+        assertEquals(0, ProcessBuilder("ssh-keygen", "-q", "-p", "-N", "test", "-f", copy.path).start().waitFor())
+        val s = session(Recorder(), Secrets(mapOf("key" to copy.readText(), "passphrase" to "test")))
+        assertEquals(SshResult.Ok, s.connect(true))
+        assertEquals("hi\n", s.exec("echo hi").stdout)
     }
 
     @Test fun `отказ доверять ключу — HOSTKEY_REJECTED`() = runBlocking {
@@ -129,7 +140,8 @@ class SshSessionTest {
         assertTrue(waitFor { ch in rec.closed })
         assertEquals("got:привет\n", rec.text(ch))
         assertEquals("e\n", rec.err[ch]?.toString(Charsets.UTF_8))
-        val seqs = rec.seqs[ch]!!
+        // Порядок вызовов из двух нитей может отличаться — номера без пропусков, интерфейс собирает по ним
+        val seqs = rec.seqs[ch]!!.sorted()
         assertEquals((0 until seqs.size).toList(), seqs)
     }
 
