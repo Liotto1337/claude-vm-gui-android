@@ -1,10 +1,8 @@
-import { EventEmitter } from 'node:events';
-import { StringDecoder } from 'node:string_decoder';
-import type { ClientChannel } from 'ssh2';
+import { Emitter } from './emitter';
 import { ok, type Result } from '@shared/ipc';
 import { shellQuote } from '@shared/quote';
 import { newParseState, parseTranscriptLines, type ParseState } from '@shared/transcript-parse';
-import type { SshConnection } from './ssh';
+import type { Channel, SshTransport } from './transport';
 
 const TAIL_BYTES = 1_572_864; // 1,5 МБ
 const BAD_STREAK = 20;
@@ -16,7 +14,7 @@ const UNREADABLE = 'Не удалось прочитать переписку';
  * Кусок файла [from, from+len) целыми строками. Если from > 0, первая строка могла начаться раньше —
  * она отбрасывается, а start указывает на начало первой целой строки (в байтах).
  */
-async function readRange(conn: SshConnection, q: string, from: number, len: number): Promise<{ lines: string[]; start: number }> {
+async function readRange(conn: SshTransport, q: string, from: number, len: number): Promise<{ lines: string[]; start: number }> {
   const chunk = `tail -c +${from + 1} -- ${q} | head -c ${len}`;
   const cmd = from > 0 ? `${chunk} | head -n 1 | wc -c; ${chunk}` : `echo 0; ${chunk}`;
   const r = await conn.exec(cmd, { timeoutMs: 20_000 });
@@ -35,7 +33,7 @@ async function readRange(conn: SshConnection, q: string, from: number, len: numb
  * Как readRange, но если в окне нет ни одной целой строки (строка длиннее окна — например, картинка base64),
  * окно расширяется назад до MAX_WINDOW; дальше строка пропускается, а start всё равно сдвигается назад.
  */
-async function readLines(conn: SshConnection, q: string, from: number, len: number): Promise<{ lines: string[]; start: number }> {
+async function readLines(conn: SshTransport, q: string, from: number, len: number): Promise<{ lines: string[]; start: number }> {
   let f = from;
   let l = len;
   for (;;) {
@@ -52,7 +50,7 @@ async function readLines(conn: SshConnection, q: string, from: number, len: numb
  * Хвост файла (не больше bytes) целыми строками, размер файла и смещение первой целой строки.
  * Файла нет — пустой хвост: у новой сессии Claude Code создаёт журнал только с первым сообщением.
  */
-export async function readTail(conn: SshConnection, path: string, bytes: number): Promise<{ lines: string[]; start: number; size: number }> {
+export async function readTail(conn: SshTransport, path: string, bytes: number): Promise<{ lines: string[]; start: number; size: number }> {
   const q = shellQuote(path);
   const r = await conn.exec(`if [ -e ${q} ]; then stat -c %s -- ${q}; else echo missing; fi`, { timeoutMs: 5000 });
   if (r.stdout.trim() === 'missing') return { lines: [], start: 0, size: 0 };
@@ -67,15 +65,15 @@ export async function readTail(conn: SshConnection, path: string, bytes: number)
  * Журнал сессии Claude Code: хвост при открытии, затем слежение (`tail -F`), подгрузка ранней части.
  * События: `items` (ChatEvent без session), `unavailable` (причина).
  */
-export class TranscriptService extends EventEmitter {
+export class TranscriptService extends Emitter {
   private gen = 0;
   private path: string | null = null;
   private st: ParseState = newParseState();
   private start = 0;
-  private stream: ClientChannel | null = null;
+  private stream: Channel | null = null;
   private readonly tailBytes: number;
 
-  constructor(private readonly conn: SshConnection, opts: { tailBytes?: number } = {}) {
+  constructor(private readonly conn: SshTransport, opts: { tailBytes?: number } = {}) {
     super();
     this.tailBytes = opts.tailBytes ?? TAIL_BYTES;
   }
@@ -108,7 +106,7 @@ export class TranscriptService extends EventEmitter {
   private async watch(path: string, size: number, gen: number): Promise<void> {
     // tail живёт, пока открыт stdin канала: при закрытии cat завершается и убивает tail
     const cmd = `tail -c +${size + 1} -F -- ${shellQuote(path)} 2>/dev/null & t=$!; cat >/dev/null; kill $t 2>/dev/null`;
-    let stream: ClientChannel;
+    let stream: Channel;
     try {
       stream = await this.conn.stream(cmd);
     } catch {
@@ -120,12 +118,12 @@ export class TranscriptService extends EventEmitter {
       return;
     }
     this.stream = stream;
-    const decoder = new StringDecoder('utf8');
+    const decoder = new TextDecoder('utf-8');
     let buf = '';
     stream.on('error', () => {});
-    stream.on('data', (d: Buffer) => {
+    stream.on('data', (d: Uint8Array) => {
       if (gen !== this.gen) return;
-      buf += decoder.write(d);
+      buf += decoder.decode(d, { stream: true });
       const nl = buf.lastIndexOf('\n');
       if (nl < 0) return;
       const lines = buf.slice(0, nl).split('\n');

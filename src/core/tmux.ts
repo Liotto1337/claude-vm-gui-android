@@ -1,7 +1,8 @@
 import { fail, ok, type Result, type TmuxSession } from '@shared/ipc';
 import { cdPrefix, shellQuote, validateSessionName } from '@shared/quote';
 import { parseSessions, TMUX_LS_FORMAT } from '@shared/tmux-parse';
-import type { SshConnection } from './ssh';
+import { knobs } from './knobs';
+import type { SshTransport } from './transport';
 
 const BAD_NAME = 'Имя сессии: латиница, цифры, дефис и подчёркивание, до 64 символов';
 const NO_TMUX = 'На ВМ нет tmux. Установите его: sudo apt install tmux';
@@ -11,7 +12,7 @@ const NO_TMUX = 'На ВМ нет tmux. Установите его: sudo apt in
  * чтобы в них не попали настоящие сессии.
  */
 export function tmuxCmd(): string {
-  const sock = process.env.CVG_TMUX_SOCKET;
+  const sock = knobs.tmuxSocket;
   return sock && /^[A-Za-z0-9_-]+$/.test(sock) ? `tmux -L ${sock}` : 'tmux';
 }
 
@@ -20,7 +21,7 @@ export const exactTarget = (name: string) => shellQuote(`=${name}`);
 export const exactPane = (name: string) => shellQuote(`=${name}:`);
 
 export class TmuxService {
-  constructor(private readonly conn: SshConnection) {}
+  constructor(private readonly conn: SshTransport) {}
 
   async list(): Promise<Result<TmuxSession[]>> {
     if (!this.conn.connected) return fail('NOT_CONNECTED', 'Нет подключения к ВМ');
@@ -28,7 +29,7 @@ export class TmuxService {
     if (r.code === 0) {
       const sessions = parseSessions(r.stdout);
       // Для E2E: процесс cat изображает claude, чтобы не запускать настоящий
-      if (process.env.CVG_FAKE_CLAUDE === '1') for (const s of sessions) if (s.command === 'cat') s.claudeRunning = true;
+      if (knobs.fakeClaude === true) for (const s of sessions) if (s.command === 'cat') s.claudeRunning = true;
       return ok(sessions);
     }
     if (r.code === 127) return fail('NO_TMUX', NO_TMUX);
@@ -58,7 +59,7 @@ export class TmuxService {
   async startClaude(name: string): Promise<Result<void>> {
     if (!validateSessionName(name)) return fail('BAD_NAME', BAD_NAME);
     // CVG_CLAUDE_CMD — своя команда вместо claude (тесты: фейковый claude)
-    const cmd = process.env.CVG_CLAUDE_CMD ?? 'claude';
+    const cmd = knobs.claudeCmd ?? 'claude';
     const r = await this.conn.exec(`${tmuxCmd()} send-keys -t ${exactPane(name)} ${shellQuote(cmd)} Enter`);
     return r.code === 0 ? ok(undefined) : fail('NO_SESSION', `Сессии ${name} нет`);
   }

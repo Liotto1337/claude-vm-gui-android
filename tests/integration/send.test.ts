@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SshConnection } from '../../src/main/ssh';
-import { TerminalService, type SendTimings } from '../../src/main/terminal';
-import { TmuxService } from '../../src/main/tmux';
+import { TerminalService, type SendTimings } from '../../src/core/terminal';
+import { TmuxService } from '../../src/core/tmux';
 import { hasTestKey, tempKnownHosts, testConfig, testSessionName } from './helpers';
 
 // Фейковый claude теряет Enter, пришедший во время обработки вставки (как настоящий, если Enter склеен с концом вставки)

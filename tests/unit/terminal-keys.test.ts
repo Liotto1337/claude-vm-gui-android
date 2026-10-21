@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import type { SshConnection } from '../../src/main/ssh';
-import { TerminalService } from '../../src/main/terminal';
-import type { TmuxService } from '../../src/main/tmux';
+import type { SshTransport } from '../../src/core/transport';
+import { TerminalService } from '../../src/core/terminal';
+import type { TmuxService } from '../../src/core/tmux';
 
 // Клавиши карточки меню: каждая сначала проверяет, что в панели claude (exec), потом пишется.
 // Проверки идут параллельно и завершаются в разном порядке — запись должна идти в порядке нажатия.
@@ -23,7 +23,7 @@ function fakeConn(delays: number[]) {
       return { code: 0, stdout: 'claude\t1\n__cvg_sep__\nclaude\n__cvg_sep__\n', stderr: '' };
     },
   });
-  return { conn: conn as unknown as SshConnection, writes };
+  return { conn: conn as unknown as SshTransport, writes };
 }
 
 describe('TerminalService.key', () => {
@@ -49,7 +49,7 @@ describe('TerminalService.open', () => {
         return stream();
       },
     });
-    const term = new TerminalService(conn as unknown as SshConnection, {} as TmuxService);
+    const term = new TerminalService(conn as unknown as SshTransport, {} as TmuxService);
     const [old, cur] = await Promise.all([term.open('old', 80, 24), term.open('cur', 80, 24)]);
     expect(old.ok && cur.ok).toBe(true);
     expect(term.current).toBe('cur');

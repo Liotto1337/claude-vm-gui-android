@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import type { SshConnection } from '../../src/main/ssh';
-import { TerminalService } from '../../src/main/terminal';
-import type { TmuxService } from '../../src/main/tmux';
+import type { SshTransport } from '../../src/core/transport';
+import { TerminalService } from '../../src/core/terminal';
+import type { TmuxService } from '../../src/core/tmux';
 
 // Отправка: вставка → ждём, пока поле устоится → Enter → проверяем, что сообщение принято.
 // Поле ввода задаётся функцией от числа нажатых Enter; null — поля нет (открылось меню).
@@ -25,7 +25,7 @@ function setup(field: (enters: number) => string | null) {
     exec: async () => ({ code: 0, stdout: `claude\t1\n__cvg_sep__\nclaude\n__cvg_sep__\n${toScreen(field(0))}`, stderr: '' }),
   });
   const enters = () => writes.filter((w) => w === '\r').length;
-  const term = new TerminalService(conn as unknown as SshConnection, {} as TmuxService, {
+  const term = new TerminalService(conn as unknown as SshTransport, {} as TmuxService, {
     probe: async () => toScreen(field(enters())),
     timings: FAST,
   });

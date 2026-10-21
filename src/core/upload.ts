@@ -1,24 +1,23 @@
-import { randomBytes } from 'node:crypto';
-import { EventEmitter } from 'node:events';
+import { Emitter } from './emitter';
 import { fail, ok, type ImageExt, type Result } from '@shared/ipc';
-import type { SshConnection } from './ssh';
+import type { SshTransport } from './transport';
 
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const UPLOAD_DIR = '"$HOME/.cache/claude-vm-gui/uploads"';
-const CHUNK = 64 * 1024;
 const EXTS: ImageExt[] = ['png', 'jpg', 'gif', 'webp'];
 
 const pad = (n: number) => String(n).padStart(2, '0');
+const randomHex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
 function fileName(ext: ImageExt, d = new Date()): string {
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  return `${stamp}-${randomBytes(3).toString('hex')}.${ext}`;
+  return `${stamp}-${randomHex(3)}.${ext}`;
 }
 
 /** Загрузка картинок на ВМ по SFTP. Событие `progress` (UploadProgress). */
-export class UploadService extends EventEmitter {
+export class UploadService extends Emitter {
   private dir: string | null = null;
 
-  constructor(private readonly conn: SshConnection) {
+  constructor(private readonly conn: SshTransport) {
     super();
     conn.on('reconnected', () => {
       this.dir = null;
@@ -39,30 +38,9 @@ export class UploadService extends EventEmitter {
     if (!this.conn.connected) return fail('NOT_CONNECTED', 'Нет подключения к ВМ');
     try {
       const remotePath = `${await this.uploadDir()}/${fileName(ext)}`;
-      const sftp = await this.conn.sftp();
-      const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      await new Promise<void>((resolve, reject) => {
-        const ws = sftp.createWriteStream(remotePath, { mode: 0o600 });
-        ws.on('error', reject);
-        ws.on('close', () => resolve());
-        let sent = 0;
-        const writeNext = () => {
-          while (sent < data.length) {
-            const chunk = data.subarray(sent, sent + CHUNK);
-            sent += chunk.length;
-            this.emit('progress', { id, sent, total: data.length });
-            if (!ws.write(chunk)) {
-              ws.once('drain', writeNext);
-              return;
-            }
-          }
-          ws.end();
-        };
-        if (data.length === 0) {
-          this.emit('progress', { id, sent: 0, total: 0 });
-          ws.end();
-        } else writeNext();
-      });
+      const total = bytes.byteLength;
+      if (total === 0) this.emit('progress', { id, sent: 0, total: 0 });
+      await this.conn.writeFile(remotePath, bytes, (sent) => this.emit('progress', { id, sent, total }));
       return ok({ remotePath });
     } catch (e) {
       return fail('UPLOAD_FAILED', (e as Error).message);

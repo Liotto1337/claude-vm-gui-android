@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MetricsService } from '../../src/main/metrics';
+import { MetricsService } from '../../src/core/metrics';
 import { SshConnection } from '../../src/main/ssh';
 import type { MetricsSample } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';

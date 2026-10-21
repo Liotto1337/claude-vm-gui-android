@@ -1,9 +1,10 @@
-import { EventEmitter } from 'node:events';
+import { Emitter } from './emitter';
+import { knobs } from './knobs';
 import type { ScreenState } from '@shared/ipc';
 import { pickClaudeSession, type ClaudeSessionInfo } from '@shared/claude-session';
 import { shellQuote } from '@shared/quote';
 import { classifyScreen } from '@shared/screen-parse';
-import type { SshConnection } from './ssh';
+import type { SshTransport } from './transport';
 import { exactPane, tmuxCmd } from './tmux';
 
 const SEP = '__cvg_sep__';
@@ -29,7 +30,7 @@ function descendants(root: number, table: string): number[] {
 /** Считается ли процесс панели claude (как в TerminalService.checkWritable). */
 function isClaude(command: string, children: string): boolean {
   if (command === 'claude' || (command === 'node' && /claude/i.test(children))) return true;
-  return process.env.CVG_FAKE_CLAUDE === '1' && command === 'cat';
+  return knobs.fakeClaude === true && command === 'cat';
 }
 
 /**
@@ -37,7 +38,7 @@ function isClaude(command: string, children: string): boolean {
  * и какая сессия Claude Code в панели. События: `screen` ({ state, busy }), `claude` (ClaudeSessionInfo | null);
  * шлются только при изменении.
  */
-export class SessionWatcher extends EventEmitter {
+export class SessionWatcher extends Emitter {
   private timer: ReturnType<typeof setInterval> | null = null;
   private name: string | null = null;
   private tick = 0;
@@ -48,7 +49,7 @@ export class SessionWatcher extends EventEmitter {
   private info: ClaudeSessionInfo | null = null;
   private readonly intervalMs: number;
 
-  constructor(private readonly conn: SshConnection, private readonly opts: { claudeDir: string; intervalMs?: number }) {
+  constructor(private readonly conn: SshTransport, private readonly opts: { claudeDir: string; intervalMs?: number }) {
     super();
     this.intervalMs = opts.intervalMs ?? 500;
   }

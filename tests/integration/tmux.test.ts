@@ -3,8 +3,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { SshConnection } from '../../src/main/ssh';
-import { TerminalService } from '../../src/main/terminal';
-import { TmuxService } from '../../src/main/tmux';
+import { TerminalService } from '../../src/core/terminal';
+import { TmuxService } from '../../src/core/tmux';
 import type { ExitReason } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig, testSessionName } from './helpers';
 

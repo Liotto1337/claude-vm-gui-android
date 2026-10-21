@@ -1,7 +1,8 @@
 import { BUILTIN_COMMANDS, parseInitialize } from '@shared/hints';
 import { fail, ok, type Hints, type Result } from '@shared/ipc';
 import { cdPrefix, shellQuote } from '@shared/quote';
-import type { SshConnection } from './ssh';
+import { knobs } from './knobs';
+import type { SshTransport } from './transport';
 
 const FILES_TTL_MS = 60_000;
 
@@ -14,8 +15,8 @@ export class HintsService {
   private filesCache = new Map<string, { at: number; files: string[] }>();
   private readonly claudeBin: string;
 
-  constructor(private readonly conn: SshConnection, opts: { claudeBin?: string } = {}) {
-    this.claudeBin = opts.claudeBin ?? process.env.CVG_CLAUDE_BIN ?? 'claude';
+  constructor(private readonly conn: SshTransport, opts: { claudeBin?: string } = {}) {
+    this.claudeBin = opts.claudeBin ?? knobs.claudeBin ?? 'claude';
     // После переподключения список мог измениться (новые скиллы, обновление claude)
     conn.on('reconnected', () => this.commandsCache.clear());
   }

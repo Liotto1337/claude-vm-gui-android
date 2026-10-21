@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SshConnection } from '../../src/main/ssh';
-import { readTail, TranscriptService } from '../../src/main/transcript';
+import { readTail, TranscriptService } from '../../src/core/transcript';
 import type { ChatEvent } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';
 

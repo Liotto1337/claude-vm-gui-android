@@ -1,10 +1,10 @@
-import { EventEmitter } from 'node:events';
+import { Emitter } from './emitter';
 import { fail, ok, type MetricsSample, type Result, type SystemInfo } from '@shared/ipc';
 import {
   cpuPercent, labelClaudeProcs, parseCpu, parseDf, parseLoad, parseMem, parseNetDev, parseOsRelease, parsePs, parseUptime, pickInterface,
 } from '@shared/metrics-parse';
 import { shellQuote } from '@shared/quote';
-import type { SshConnection } from './ssh';
+import type { SshTransport } from './transport';
 
 const SEP = '__cvg_sep__';
 const TOP = 5;
@@ -13,7 +13,7 @@ const TOP = 5;
  * Параметры ВМ одной командой по SSH: раз в slowMs в фоне (чтобы графики были заполнены к открытию панели)
  * и раз в fastMs, пока панель открыта. Событие `sample` (MetricsSample).
  */
-export class MetricsService extends EventEmitter {
+export class MetricsService extends Emitter {
   private timer: ReturnType<typeof setInterval> | null = null;
   private fast = false;
   private busy = false;
@@ -22,7 +22,7 @@ export class MetricsService extends EventEmitter {
   private readonly slowMs: number;
   private readonly fastMs: number;
 
-  constructor(private readonly conn: SshConnection, private readonly opts: { claudeDir: string; slowMs?: number; fastMs?: number }) {
+  constructor(private readonly conn: SshTransport, private readonly opts: { claudeDir: string; slowMs?: number; fastMs?: number }) {
     super();
     this.slowMs = opts.slowMs ?? 10_000;
     this.fastMs = opts.fastMs ?? 2000;

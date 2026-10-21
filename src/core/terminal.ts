@@ -1,12 +1,11 @@
-import { EventEmitter } from 'node:events';
-import { StringDecoder } from 'node:string_decoder';
-import type { ClientChannel } from 'ssh2';
+import { Emitter } from './emitter';
+import { knobs } from './knobs';
 import { fail, ok, type ExitReason, type MenuKey, type Result } from '@shared/ipc';
 import { dialogOpen } from '@shared/dialog';
 import { bracketedPaste, keyBytes, slashCommand } from '@shared/paste';
 import { validateSessionName } from '@shared/quote';
 import { inputText } from '@shared/screen-parse';
-import type { SshConnection } from './ssh';
+import type { Channel, SshTransport } from './transport';
 import { exactPane, exactTarget, tmuxCmd, type TmuxService } from './tmux';
 
 const NO_CLAUDE_TEXT = 'В сессии сейчас не claude, а обычная оболочка — текст выполнился бы как команда. Запустите claude.';
@@ -33,8 +32,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Терминал открытой tmux-сессии: канал `tmux attach` с PTY.
  * События: `data` (строка для xterm.js), `exit` (ExitReason).
  */
-export class TerminalService extends EventEmitter {
-  private stream: ClientChannel | null = null;
+export class TerminalService extends Emitter {
+  private stream: Channel | null = null;
   private session: string | null = null;
   private size = { cols: 80, rows: 24 };
   /** Номер последнего open: ответ более раннего open, пришедший позже, закрывается */
@@ -43,7 +42,7 @@ export class TerminalService extends EventEmitter {
   private readonly probe: (session: string) => Promise<string | null>;
   private readonly timings: SendTimings;
 
-  constructor(private readonly conn: SshConnection, private readonly tmux: TmuxService, opts: TerminalOptions = {}) {
+  constructor(private readonly conn: SshTransport, private readonly tmux: TmuxService, opts: TerminalOptions = {}) {
     super();
     this.probe = opts.probe ?? ((name) => this.capture(name));
     this.timings = opts.timings ?? DEFAULT_TIMINGS;
@@ -65,7 +64,7 @@ export class TerminalService extends EventEmitter {
     this.detachStream();
     this.size = { cols, rows };
     const gen = ++this.generation;
-    let stream: ClientChannel;
+    let stream: Channel;
     try {
       stream = await this.conn.openPty(`${tmuxCmd()} attach-session -t ${exactTarget(name)}`, cols, rows);
     } catch (e) {
@@ -78,10 +77,10 @@ export class TerminalService extends EventEmitter {
     }
     this.stream = stream;
     this.session = name;
-    const decoder = new StringDecoder('utf8');
+    const decoder = new TextDecoder('utf-8');
     stream.on('error', () => {});
-    stream.on('data', (d: Buffer) => this.emit('data', decoder.write(d)));
-    stream.stderr.on('data', (d: Buffer) => this.emit('data', d.toString('utf8')));
+    stream.on('data', (d: Uint8Array) => this.emit('data', decoder.decode(d, { stream: true })));
+    stream.stderr.on('data', (d: Uint8Array) => this.emit('data', new TextDecoder('utf-8').decode(d)));
     stream.on('close', () => {
       if (this.stream !== stream) return;
       this.stream = null;
@@ -110,7 +109,7 @@ export class TerminalService extends EventEmitter {
 
   resize(cols: number, rows: number): void {
     this.size = { cols, rows };
-    this.stream?.setWindow(rows, cols, 0, 0);
+    this.stream?.setWindow(rows, cols);
   }
 
   /**
@@ -137,7 +136,7 @@ export class TerminalService extends EventEmitter {
     }
     const [head = '', children = '', screen = ''] = out.split(`${sep}\n`);
     const command = head.split('\t')[0].trim();
-    const fake = process.env.CVG_FAKE_CLAUDE === '1' && command === 'cat';
+    const fake = knobs.fakeClaude === true && command === 'cat';
     // Claude Code, поставленный через npm, виден как node — смотрим на аргументы процесса
     const isClaude = command === 'claude' || (command === 'node' && /claude/i.test(children));
     if (!isClaude && !fake) return fail('NO_CLAUDE', NO_CLAUDE_TEXT);

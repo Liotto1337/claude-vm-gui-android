@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { HintsService } from '../../src/main/hints';
+import { HintsService } from '../../src/core/hints';
 import { SshConnection } from '../../src/main/ssh';
-import { UploadService } from '../../src/main/upload';
+import { UploadService } from '../../src/core/upload';
 import type { UploadProgress } from '../../src/shared/ipc';
 import { hasTestKey, tempKnownHosts, testConfig } from './helpers';
 
