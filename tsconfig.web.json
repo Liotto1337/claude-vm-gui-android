@@ -20,11 +20,18 @@
       "@core/*": [
         "src/core/*"
       ]
-    }
+    },
+    "types": [
+      "vite/client"
+    ]
   },
   "include": [
+    "src/core/**/*",
+    "src/platform/**/*",
     "src/renderer/**/*",
-    "src/shared/**/*",
-    "src/core/**/*"
+    "src/shared/**/*"
+  ],
+  "exclude": [
+    "src/shared/known-hosts.ts"
   ]
 }

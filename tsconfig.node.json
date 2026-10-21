@@ -34,8 +34,5 @@
     "vite.config.ts",
     "bridge/**/*",
     "src/platform/bridge-protocol.ts"
-  ],
-  "exclude": [
-    "src/main/controller.ts"
   ]
 }

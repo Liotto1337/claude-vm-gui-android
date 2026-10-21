@@ -6,10 +6,18 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import './styles/tokens.css';
 import './styles/app.css';
-import { App } from './App';
+import { createApi } from '@core/api';
+import { selectPlatform } from '../platform/select';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// window.api появляется до загрузки компонентов: они берут его при импорте (api.ts)
+async function boot(): Promise<void> {
+  window.api = createApi(await selectPlatform());
+  const { App } = await import('./App');
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void boot();

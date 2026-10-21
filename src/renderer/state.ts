@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type {
   ChatItem, ConnectionState, ErrorCode, Hints, HostKeyPrompt, MetricsSample, PreflightEvent, PreflightStep, ScreenState,
-  SidebarLayout, SystemInfo, TmuxSession, VmConfig,
+  KeyImport, SidebarLayout, SystemInfo, TmuxSession, VmConfig,
 } from '@shared/ipc';
 import { claimPending, nextTyping, type Pending } from './chat-anim';
 import { mergeItems } from './view-mode';
@@ -141,8 +141,8 @@ export function answerHostKey(trust: boolean): void {
 }
 
 /** password: undefined — не менять сохранённый, null — удалить, строка — новый. */
-export async function saveConfig(c: VmConfig, password?: string | null): Promise<string | null> {
-  const r = await api.config.save(c, password);
+export async function saveConfig(c: VmConfig, password?: string | null, key?: KeyImport | null): Promise<string | null> {
+  const r = await api.config.save(c, password, key);
   if (!r.ok) return r.error.message;
   setState({ config: await api.config.get() });
   return null;

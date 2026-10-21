@@ -3,7 +3,7 @@ import { readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig } from './helpers';
+import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig, writeClipboardPng } from './helpers';
 
 test.skip(!hasTestKey, 'нет тестового ключа');
 
@@ -57,10 +57,7 @@ test('сквозной сценарий: сессия, подсказки, ка�
     await expect(page.getByRole('listbox', { name: 'Подсказки' })).toBeHidden();
 
     // Картинка и отправка
-    await app.evaluate(async ({ clipboard, ClipboardItem }, b64) => {
-      const png = new Blob([Buffer.from(b64, 'base64')], { type: 'image/png' });
-      await (clipboard as unknown as { write(items: unknown[]): Promise<void> }).write([new ClipboardItem({ 'image/png': png })]);
-    }, PNG.toString('base64'));
+    await writeClipboardPng(page, PNG.toString('base64'));
     await box.fill('');
     await box.focus();
     await page.keyboard.press('Control+V');
@@ -78,7 +75,7 @@ test('сквозной сценарий: сессия, подсказки, ка�
     expect(pane()).toContain('/model sonnet');
 
     // Обрыв связи: плашка, переподключение, терминал снова работает
-    await app.evaluate(() => (globalThis as unknown as { __cvg: { dropConnection(): void } }).__cvg.dropConnection());
+    await page.evaluate(() => (globalThis as unknown as { __cvg: { dropConnection(): void } }).__cvg.dropConnection());
     await expect(page.getByText('Связь потеряна. Переподключаюсь…')).toBeVisible();
     await expect(page.getByText('Связь потеряна. Переподключаюсь…')).toBeHidden({ timeout: 15_000 });
     await page.locator('.xterm').click();

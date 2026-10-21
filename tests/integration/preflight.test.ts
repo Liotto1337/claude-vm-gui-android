@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PreflightEvent, VmConfig } from '../../src/shared/ipc';
 import { checkTcp, runPreflight } from '../../bridge/preflight';
 
-const cfg = (port: number): VmConfig => ({ host: '127.0.0.1', port, username: 'root', keyPath: '', theme: 'system' });
+const cfg = (port: number): VmConfig => ({ host: '127.0.0.1', port, username: 'root', theme: 'system', keepAlive: true, notifications: true });
 
 describe('checkTcp', () => {
   it('открытый порт 22', async () => expect((await checkTcp('127.0.0.1', 22)).ok).toBe(true));

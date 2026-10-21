@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import type { VmConfig } from '@shared/ipc';
-import { passwordToSave, type PasswordMode } from '../settings-password';
+import { keyToSave, passwordToSave, type PasswordMode } from '../settings-password';
 import { connect, getState, previewTheme, saveConfig, setState, useAppState } from '../state';
 
-const DEFAULTS: VmConfig = { host: '', port: 22, username: 'root', keyPath: '~/.ssh/id_ed25519', theme: 'system' };
+const DEFAULTS: VmConfig = { host: '', port: 22, username: 'root', theme: 'system', keepAlive: true, notifications: true };
+const NEEDS_PASSPHRASE = ['Ключ защищён парольной фразой', 'Неверная парольная фраза'];
 
 export function SettingsDialog({ onClose }: { onClose?: () => void }) {
   const { config } = useAppState();
@@ -12,14 +13,19 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [pwdMode, setPwdMode] = useState<PasswordMode>(config?.hasPassword ? 'saved' : 'edit');
   const [password, setPassword] = useState('');
+  const [keyMode, setKeyMode] = useState<PasswordMode>(config?.hasKey ? 'saved' : 'edit');
+  const [keyText, setKeyText] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [askPassphrase, setAskPassphrase] = useState(false);
   const set = (patch: Partial<VmConfig>) => setForm((f) => ({ ...f, ...patch }));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const next = { ...form, port: Number(portText) };
     const pwd = passwordToSave(pwdMode, password, config?.passwordUnreadable === true);
-    const err = await saveConfig(next, pwd);
+    const err = await saveConfig(next, pwd, keyToSave(keyMode, keyText, passphrase));
     setError(err);
+    if (err && NEEDS_PASSPHRASE.includes(err)) setAskPassphrase(true);
     if (!err) void connect();
   };
 
@@ -47,11 +53,51 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
             <input id="set-port" inputMode="numeric" value={portText} onChange={(e) => setPortText(e.target.value)} />
           </div>
         </div>
-        <div className="field">
-          <label htmlFor="set-key">Путь к SSH-ключу</label>
-          <input id="set-key" className="mono" value={form.keyPath} onChange={(e) => set({ keyPath: e.target.value })} />
-          <span className="hint">Не нужен, если задан пароль. Если ключ защищён паролем, приложение возьмёт его из ssh-agent Windows</span>
-        </div>
+        {keyMode === 'saved' ? (
+          <div className="field">
+            <span className="label-like">SSH-ключ</span>
+            <div className="row gap-8">
+              <span className="grow">Импортирован{config?.keyType ? ` (${config.keyType})` : ''}</span>
+              <button type="button" className="btn" onClick={() => setKeyMode('edit')}>Заменить</button>
+              <button type="button" className="btn" onClick={() => setKeyMode('deleted')}>Удалить ключ</button>
+            </div>
+          </div>
+        ) : (
+          <div className="field">
+            <label htmlFor="set-key">SSH-ключ (закрытый, OpenSSH или PEM)</label>
+            <textarea
+              id="set-key"
+              className="mono key-input"
+              rows={4}
+              spellCheck={false}
+              autoComplete="off"
+              value={keyText}
+              placeholder={keyMode === 'deleted' ? 'Сохранённый ключ будет удалён' : '-----BEGIN OPENSSH PRIVATE KEY-----'}
+              onChange={(e) => setKeyText(e.target.value)}
+            />
+            <div className="row gap-8">
+              <label className="btn file-btn">
+                Из файла…
+                <input
+                  type="file"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void f.text().then(setKeyText);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <span className="hint grow">Не нужен, если задан пароль. Хранится в хранилище ключей Android и в интерфейс не возвращается</span>
+            </div>
+            {askPassphrase ? (
+              <>
+                <label htmlFor="set-passphrase">Парольная фраза ключа</label>
+                <input id="set-passphrase" type="password" autoComplete="off" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
+              </>
+            ) : null}
+          </div>
+        )}
         {pwdMode === 'saved' ? (
           <div className="field">
             <span className="label-like">Пароль</span>
@@ -74,10 +120,10 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
             />
             {config?.passwordUnreadable && pwdMode === 'edit' ? (
               <span className="hint hint-error">
-                Сохранённый пароль не удалось расшифровать — например, приложение запущено под другой учётной записью Windows. Введите пароль заново или оставьте поле пустым, чтобы удалить его
+                Сохранённый пароль не удалось расшифровать — например, после переустановки приложения или сброса хранилища ключей. Введите пароль заново или оставьте поле пустым, чтобы удалить его
               </span>
             ) : (
-              <span className="hint">Хранится зашифрованным средствами Windows. Пусто — вход по ключу</span>
+              <span className="hint">Хранится зашифрованным в хранилище ключей Android. Пусто — вход по ключу</span>
             )}
           </div>
         )}
@@ -92,7 +138,7 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
               previewTheme(theme);
             }}
           >
-            <option value="system">Как в Windows</option>
+            <option value="system">Как в системе</option>
             <option value="light">Светлая</option>
             <option value="dark">Тёмная</option>
           </select>

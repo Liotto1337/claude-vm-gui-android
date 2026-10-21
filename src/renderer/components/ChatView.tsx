@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { FOLLOW_START, followOnScroll, followUserUp, type Follow } from '../follow';
 import { typingDone, useAppState } from '../state';
 import { ChatItemView } from './ChatItemView';
 import { IconImage } from './icons';
 import { Spinner } from './Spinner';
 
-const NEAR_BOTTOM = 48;
 const UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home']);
 
 /** Лента переписки открытой сессии (вместо терминала, пока работает claude). */
@@ -19,9 +19,8 @@ export function ChatView({ session }: { session: string }) {
   // Пока ответ «печатается», лента следит за низом
   const [tick, setTick] = useState(0);
   const box = useRef<HTMLElement>(null);
-  const atBottom = useRef(true);
-  // Пользователь сам ушёл вверх (колесо, клавиши): слежение за низом — только когда докрутит до самого низа
-  const userUp = useRef(false);
+  // Слежение за низом; пользователь сам ушёл вверх (колесо, клавиши) — только когда докрутит до самого низа
+  const follow = useRef<Follow>(FOLLOW_START);
   const sentIds = useRef(new Set(pending.map((p) => p.id)));
   const restore = useRef<number | null>(null);
   const [behind, setBehind] = useState(false);
@@ -40,11 +39,10 @@ export function ChatView({ session }: { session: string }) {
     const fresh = pending.some((p) => !sentIds.current.has(p.id));
     sentIds.current = new Set(pending.map((p) => p.id));
     if (fresh) {
-      atBottom.current = true;
-      userUp.current = false;
+      follow.current = FOLLOW_START;
       setBehind(false);
     }
-    if (atBottom.current) el.scrollTop = el.scrollHeight;
+    if (follow.current.atBottom) el.scrollTop = el.scrollHeight;
     else setBehind(true);
   }, [items, status, pending, tick]);
 
@@ -55,7 +53,7 @@ export function ChatView({ session }: { session: string }) {
     const content = inner.current;
     if (!el || !content) return;
     const ro = new ResizeObserver(() => {
-      if (atBottom.current) el.scrollTop = el.scrollHeight;
+      if (follow.current.atBottom) el.scrollTop = el.scrollHeight;
     });
     ro.observe(content);
     return () => ro.disconnect();
@@ -64,16 +62,13 @@ export function ChatView({ session }: { session: string }) {
   const onScroll = () => {
     const el = box.current;
     if (!el) return;
-    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (gap < 2) userUp.current = false;
-    atBottom.current = gap < (userUp.current ? 2 : NEAR_BOTTOM);
-    if (atBottom.current) setBehind(false);
+    follow.current = followOnScroll(follow.current, { scrollTop: el.scrollTop, gap: el.scrollHeight - el.scrollTop - el.clientHeight });
+    if (follow.current.atBottom) setBehind(false);
   };
   const goingUp = () => {
     const el = box.current;
     if (!el || el.scrollTop <= 0) return; // некуда вверх — лента не прокручивается
-    userUp.current = true;
-    atBottom.current = false;
+    follow.current = followUserUp(follow.current, el.scrollTop);
   };
 
   const loadEarlier = async () => {
@@ -136,8 +131,7 @@ export function ChatView({ session }: { session: string }) {
           className="btn btn-sm chat-new"
           onClick={() => {
             const el = box.current;
-            userUp.current = false;
-            atBottom.current = true;
+            follow.current = FOLLOW_START;
             if (el) el.scrollTop = el.scrollHeight;
             setBehind(false);
           }}

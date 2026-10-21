@@ -260,7 +260,7 @@ test('ссылка из ответа открывается через links.ope
   try {
     await feed(page).getByRole('link', { name: 'сайт' }).click({ timeout: 15_000 });
     await expect
-      .poll(() => app.evaluate(() => (globalThis as unknown as { __cvg: { lastLink?: string } }).__cvg.lastLink))
+      .poll(() => page.evaluate(() => (globalThis as unknown as { __cvg: { lastLink?: string } }).__cvg.lastLink))
       .toBe('https://example.com/doc');
     await expect(feed(page)).toBeVisible();
   } finally {
@@ -271,7 +271,7 @@ test('ссылка из ответа открывается через links.ope
 // Расстояние от низа ленты, px
 const fromBottom = (page: Page) => feed(page).evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
 async function scrollable(l: Launched) {
-  await l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 560));
+  await l.page.setViewportSize({ width: 1000, height: 560 });
   await expect(feed(l.page).getByText('Сейчас посмотрю.')).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => feed(l.page).evaluate((el) => el.scrollHeight > el.clientHeight + 200)).toBe(true);
 }

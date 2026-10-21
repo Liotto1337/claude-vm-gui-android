@@ -9,6 +9,9 @@ import { checkTcp, runPreflight } from './preflight';
 
 const HANDSHAKE_MS = 20_000;
 
+/** Куда подключаться: настройки приложения плюс путь к файлу ключа (мост и интеграционные тесты). */
+export type SshTarget = VmConfig & { keyPath?: string };
+
 export interface SshOptions {
   knownHostsPath: string;
   askHostKey: (p: HostKeyPrompt) => Promise<boolean>;
@@ -34,7 +37,7 @@ export class SshConnection extends EventEmitter {
   private closing = false;
   private pingMs: number | null = null;
 
-  constructor(private readonly cfg: VmConfig, private readonly opts: SshOptions) {
+  constructor(private readonly cfg: SshTarget, private readonly opts: SshOptions) {
     super();
   }
 
@@ -137,7 +140,7 @@ export class SshConnection extends EventEmitter {
   }
 
   private authFailedText(offered: string[] | null): string {
-    if (!this.opts.password) return `Сервер не принял ключ ${this.cfg.keyPath}. Проверьте путь к ключу или ssh-agent`;
+    if (!this.opts.password) return `Сервер не принял ключ ${this.cfg.keyPath || 'импортированный'}. Проверьте ключ или ssh-agent`;
     if (offered && !offered.includes('password') && !offered.includes('keyboard-interactive'))
       return 'На сервере выключен вход по паролю. Используйте SSH-ключ';
     return 'Сервер не принял ни ключ, ни пароль';
@@ -146,7 +149,7 @@ export class SshConnection extends EventEmitter {
   private connectOnce(interactive: boolean): Promise<Result<void>> {
     const auth = this.authConfig();
     if (!auth && !this.opts.password) {
-      return Promise.resolve(fail('AUTH_FAILED', `Не удалось прочитать ключ ${this.cfg.keyPath}, и ssh-agent недоступен`));
+      return Promise.resolve(fail('AUTH_FAILED', `Нет ни ключа, ни пароля: импортируйте SSH-ключ или задайте пароль в настройках`));
     }
     const { handler, offered } = this.authHandler(auth);
     const knownText = existsSync(this.opts.knownHostsPath) ? readFileSync(this.opts.knownHostsPath, 'utf8') : '';

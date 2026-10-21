@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { launchApp, withConfig, tempKnownHostsPath, TEST_KEY, hasTestKey } from './helpers';
+import { readFileSync } from 'node:fs';
+import { launchApp, withConfig, tempKnownHostsPath, trustedKnownHosts, TEST_KEY, hasTestKey } from './helpers';
 
 test('без настроек открывается окно «Настройки подключения»', async () => {
   const { app, page } = await launchApp();
@@ -36,6 +35,7 @@ test('закрытый порт: TCP — ошибка, SSH пропущен, е�
   try {
     await page.getByLabel('Адрес ВМ').fill('127.0.0.1');
     await page.getByLabel('Порт').fill('1');
+    await page.getByLabel('Пароль (необязательно)').fill('x');
     await page.getByRole('button', { name: 'Сохранить и подключиться' }).click();
     await expect(page.getByRole('heading', { name: 'Подключение к ВМ' })).toBeVisible();
     await expect(page.getByText('Не удалось соединиться за 5 с. Проверьте интернет и что ВМ включена')).toBeVisible({ timeout: 20_000 });
@@ -77,26 +77,55 @@ test('отказ доверять ключу — ошибка на шаге SSH'
   }
 });
 
-test('пароль сохраняется и показывается как сохранённый, в файле его нет', async () => {
-  // CVG_TEST_HOOKS включает на Linux шифрование без хранилища ключей
-  const { app, page, userData } = await launchApp({ CVG_TEST_HOOKS: '1' });
+test('без ключа и пароля — просьба импортировать ключ', async () => {
+  const { app, page } = await launchApp();
+  try {
+    await page.getByLabel('Адрес ВМ').fill('127.0.0.1');
+    await page.getByRole('button', { name: 'Сохранить и подключиться' }).click();
+    await expect(page.getByText('Импортируйте SSH-ключ или задайте пароль')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('ключ импортируется текстом и показывается как импортированный; в настройках его нет', async () => {
+  test.skip(!hasTestKey, 'нет тестового ключа');
+  const { app, page } = await launchApp({ CVG_KNOWN_HOSTS: trustedKnownHosts() });
+  try {
+    await page.getByLabel('Адрес ВМ').fill('127.0.0.1');
+    await page.getByLabel('SSH-ключ (закрытый, OpenSSH или PEM)').fill(readFileSync(TEST_KEY, 'utf8'));
+    await page.getByRole('button', { name: 'Сохранить и подключиться' }).click();
+    await expect(page.getByRole('navigation', { name: 'Сессии' })).toBeVisible({ timeout: 20_000 });
+    expect(await page.evaluate(() => localStorage.getItem('cvg:config'))).not.toContain('PRIVATE KEY');
+    expect(JSON.parse((await page.evaluate(() => localStorage.getItem('cvg:config')))!)).toMatchObject({ keyType: 'ed25519' });
+    await page.getByRole('button', { name: 'Настройки подключения' }).click();
+    await expect(page.getByRole('dialog', { name: 'Настройки подключения' }).getByText('Импортирован (ed25519)')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('мусор вместо ключа — понятная ошибка', async () => {
+  const { app, page } = await launchApp();
+  try {
+    await page.getByLabel('Адрес ВМ').fill('127.0.0.1');
+    await page.getByLabel('SSH-ключ (закрытый, OpenSSH или PEM)').fill('не ключ');
+    await page.getByRole('button', { name: 'Сохранить и подключиться' }).click();
+    await expect(page.getByText('Это не закрытый ключ OpenSSH или PEM')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('пароль сохраняется и показывается как сохранённый, в настройках его нет', async () => {
+  const { app, page } = await launchApp();
   try {
     await page.getByLabel('Адрес ВМ').fill('127.0.0.1');
     await page.getByLabel('Порт').fill('1');
-    await page.getByLabel('Путь к SSH-ключу').fill('');
     await page.getByLabel('Пароль (необязательно)').fill('секрет-e2e');
     await page.getByRole('button', { name: 'Сохранить и подключиться' }).click();
-    const available = await app.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable());
-    const file = join(userData, 'config.json');
-    if (!available) {
-      // Без хранилища ключей пароль не сохраняется — и честно об этом сообщается
-      await expect(page.getByText('Шифрование недоступно, пароль не сохранён')).toBeVisible();
-      expect(existsSync(file) ? readFileSync(file, 'utf8') : '').not.toContain('секрет-e2e');
-      return;
-    }
     await expect(page.getByRole('heading', { name: 'Подключение к ВМ' })).toBeVisible();
-    expect(readFileSync(file, 'utf8')).not.toContain('секрет-e2e');
-    expect(JSON.parse(readFileSync(file, 'utf8')).passwordEnc).toBeTruthy();
+    expect(await page.evaluate(() => localStorage.getItem('cvg:config'))).not.toContain('секрет-e2e');
     await page.getByRole('button', { name: 'Настройки подключения' }).click();
     const dialog = page.getByRole('dialog', { name: 'Настройки подключения' });
     await expect(dialog.getByText('Пароль сохранён')).toBeVisible();

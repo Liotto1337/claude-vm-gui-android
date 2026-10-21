@@ -62,7 +62,7 @@ function session(ws: WebSocket): void {
         conn?.close();
         const cfg: VmConfig = r.cfg;
         const c = new SshConnection(
-          { ...cfg, keyPath: secrets.key ? '' : (process.env.CVG_BRIDGE_KEY ?? cfg.keyPath ?? '') },
+          cfg,
           {
             knownHostsPath: process.env.CVG_KNOWN_HOSTS ?? join(homedir(), '.ssh', 'known_hosts'),
             askHostKey: (p: HostKeyPrompt) =>

@@ -121,7 +121,7 @@ test('страницы: маленькое окно → пейджер, пере
   for (let i = 0; i < 10; i++) tmux('new-session', '-d', '-s', `cvg-test-z${i}`);
   const { app, page } = await open();
   try {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 600));
+    await page.setViewportSize({ width: 1000, height: 600 });
     await expect(nav(page).getByText(/^1 \/ \d$/)).toBeVisible();
     const first = await order(page);
     await nav(page).getByRole('button', { name: 'Следующая страница' }).click();
@@ -280,7 +280,7 @@ test('перетаскивание с перелистыванием: отпус
   for (let i = 0; i < 10; i++) tmux('new-session', '-d', '-s', `cvg-test-z${i}`);
   const { app, page } = await open();
   try {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 600));
+    await page.setViewportSize({ width: 1000, height: 600 });
     await expect(nav(page).getByText(/^1 \/ \d$/)).toBeVisible();
     const src = nav(page).locator('.session-item:visible').first();
     const s = (await src.boundingBox())!;
@@ -306,7 +306,7 @@ test('перетаскивание на другую страницу перен
   for (let i = 0; i < 10; i++) tmux('new-session', '-d', '-s', `cvg-test-z${i}`);
   const { app, page } = await open();
   try {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 600));
+    await page.setViewportSize({ width: 1000, height: 600 });
     await expect(nav(page).getByText(/^1 \/ \d$/)).toBeVisible();
     const name = (await order(page))[0];
     const s = (await nav(page).locator('.session-item:visible').first().boundingBox())!;

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig } from './helpers';
+import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig, writeClipboardPng } from './helpers';
 
 test.skip(!hasTestKey, 'нет тестового ключа');
 
@@ -72,11 +72,7 @@ test('подсказки, картинка, отправка, модель и ef
     await expect(box).toHaveValue('смотри @package.json ');
 
     // Картинка из буфера обмена
-    // Electron 44: асинхронный буфер обмена с ClipboardItem
-    await app.evaluate(async ({ clipboard, ClipboardItem }, b64) => {
-      const png = new Blob([Buffer.from(b64, 'base64')], { type: 'image/png' });
-      await (clipboard as unknown as { write(items: unknown[]): Promise<void> }).write([new ClipboardItem({ 'image/png': png })]);
-    }, PNG.toString('base64'));
+    await writeClipboardPng(page, PNG.toString('base64'));
     await box.fill('');
     await box.focus();
     await page.keyboard.press('Control+V');

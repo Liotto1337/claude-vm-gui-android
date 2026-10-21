@@ -26,16 +26,26 @@ export interface VmConfig {
   host: string;
   port: number;
   username: string;
-  keyPath: string;
   theme: 'system' | 'light' | 'dark';
   lastSession?: string;
+  /** Держать SSH в фоне (foreground-сервис Android) */
+  keepAlive: boolean;
+  /** Уведомления «Claude закончил» и «Claude ждёт ответа», пока приложение свёрнуто */
+  notifications: boolean;
   /** Только чтение: пароль сохранён (сам пароль в интерфейс не передаётся) */
   hasPassword?: boolean;
-  /** Только чтение: пароль сохранён, но не расшифровывается (другая учётная запись Windows) — нужно ввести заново */
+  /** Только чтение: пароль сохранён, но не расшифровывается (ключ Keystore потерян) — нужно ввести заново */
   passwordUnreadable?: boolean;
+  /** Только чтение: закрытый ключ импортирован (сам ключ в интерфейс не передаётся) */
+  hasKey?: boolean;
+  /** Только чтение: тип импортированного ключа — ed25519, ecdsa, rsa */
+  keyType?: string;
 }
 
-export type PreflightStep = 'ping' | 'tcp' | 'ssh' | 'tmux';
+/** Закрытый ключ для импорта в настройках: текст OpenSSH или PEM и парольная фраза, если он ею защищён. */
+export interface KeyImport { text: string; passphrase?: string }
+
+export type PreflightStep = 'tcp' | 'ssh' | 'tmux';
 export interface PreflightEvent {
   step: PreflightStep;
   status: 'running' | 'ok' | 'warn' | 'fail' | 'skipped';
@@ -148,7 +158,11 @@ export type ExitReason = 'detached' | 'killed' | 'connection-lost';
 export type Unsubscribe = () => void;
 
 export interface Api {
-  config: { get(): Promise<VmConfig | null>; save(c: VmConfig, password?: string | null): Promise<Result<void>> };
+  config: {
+    get(): Promise<VmConfig | null>;
+    /** password и key: undefined — не трогать, null — удалить, значение — сохранить */
+    save(c: VmConfig, password?: string | null, key?: KeyImport | null): Promise<Result<void>>;
+  };
   connection: {
     connect(): Promise<Result<void>>;
     disconnect(): Promise<void>;

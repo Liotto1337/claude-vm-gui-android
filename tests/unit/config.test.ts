@@ -1,155 +1,111 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadConfig, loadPassword, saveConfig, validateConfig, type SecretBox } from '../../src/main/config';
+import { loadConfig, saveConfig, validateConfig } from '../../src/core/config';
+import type { VmConfig } from '../../src/shared/ipc';
+import { fakePrefs, fakeSecrets } from './fakes/platform';
 
-const dirs = () => ({ userDataDir: mkdtempSync(join(tmpdir(), 'cvg-ud-')), repoDir: mkdtempSync(join(tmpdir(), 'cvg-repo-')) });
+const cfg: VmConfig = { host: '10.0.0.5', port: 22, username: 'root', theme: 'system', keepAlive: true, notifications: true };
 
 describe('loadConfig', () => {
-  it('нет файлов — null', () => expect(loadConfig(dirs())).toBeNull());
+  it('нет конфига — null', async () => expect(await loadConfig(fakePrefs(), fakeSecrets())).toBeNull());
 
-  it('vm.config.json из папки репозитория, с значениями по умолчанию', () => {
-    const d = dirs();
-    writeFileSync(join(d.repoDir, 'vm.config.json'), JSON.stringify({ host: '10.0.0.5', keyPath: '~/.ssh/k' }));
-    expect(loadConfig(d)).toEqual({
-      host: '10.0.0.5', port: 22, username: 'root', keyPath: join(homedir(), '.ssh/k'), theme: 'system',
+  it('битый JSON — null, без падения', async () =>
+    expect(await loadConfig(fakePrefs({ config: '{oops' }), fakeSecrets())).toBeNull());
+
+  it('значения по умолчанию: связь в фоне и уведомления включены', async () => {
+    expect(await loadConfig(fakePrefs({ config: JSON.stringify({ host: ' h ' }) }), fakeSecrets())).toEqual({
+      host: 'h', port: 22, username: 'root', theme: 'system', keepAlive: true, notifications: true,
     });
   });
 
-  it('config.json приоритетнее vm.config.json', () => {
-    const d = dirs();
-    writeFileSync(join(d.repoDir, 'vm.config.json'), JSON.stringify({ host: 'repo' }));
-    writeFileSync(join(d.userDataDir, 'config.json'), JSON.stringify({ host: 'user', port: 2222, theme: 'dark' }));
-    expect(loadConfig(d)).toMatchObject({ host: 'user', port: 2222, theme: 'dark' });
+  it('сохранённый пароль — hasPassword, не расшифровался — passwordUnreadable', async () => {
+    const prefs = fakePrefs({ config: JSON.stringify({ host: 'h' }) });
+    const s = fakeSecrets();
+    s.store.password = 'x';
+    expect(await loadConfig(prefs, s)).toMatchObject({ hasPassword: true });
+    s.unreadable.add('password');
+    const c = await loadConfig(prefs, s);
+    expect(c?.passwordUnreadable).toBe(true);
+    expect(c?.hasPassword).toBeUndefined();
   });
 
-  it('без repoDir vm.config.json не читается (собранное приложение)', () => {
-    const d = dirs();
-    writeFileSync(join(d.repoDir, 'vm.config.json'), JSON.stringify({ host: 'repo' }));
-    expect(loadConfig({ userDataDir: d.userDataDir })).toBeNull();
+  it('импортированный ключ — hasKey и его тип', async () => {
+    const prefs = fakePrefs({ config: JSON.stringify({ host: 'h', keyType: 'ed25519' }) });
+    const s = fakeSecrets();
+    s.store.key = 'KEY';
+    expect(await loadConfig(prefs, s)).toMatchObject({ hasKey: true, keyType: 'ed25519' });
+    delete s.store.key;
+    const c = await loadConfig(prefs, s);
+    expect(c?.hasKey).toBeUndefined();
+    expect(c?.keyType).toBeUndefined();
   });
+});
 
-  it('битый JSON — null, без падения', () => {
-    const d = dirs();
-    writeFileSync(join(d.userDataDir, 'config.json'), '{oops');
-    expect(loadConfig(d)).toBeNull();
-  });
+describe('validateConfig', () => {
+  it('ни ключа, ни пароля — просьба импортировать ключ', () =>
+    expect(validateConfig(cfg, false)).toBe('Импортируйте SSH-ключ или задайте пароль'));
+  it('есть ключ или пароль — ок', () => expect(validateConfig(cfg, true)).toBeNull());
+  it('адрес с пробелом', () => expect(validateConfig({ ...cfg, host: 'a b' }, true)).toBe('Укажите адрес ВМ без пробелов'));
 });
 
 describe('saveConfig', () => {
-  const good = { host: 'vm.example', port: 22, username: 'root', keyPath: '~/.ssh/id_ed25519', theme: 'system' as const };
-
-  it('сохраняет и читается обратно', () => {
-    const d = dirs();
-    expect(saveConfig(d.userDataDir, good)).toEqual({ ok: true, data: undefined });
-    expect(JSON.parse(readFileSync(join(d.userDataDir, 'config.json'), 'utf8')).host).toBe('vm.example');
-    expect(loadConfig({ userDataDir: d.userDataDir })?.host).toBe('vm.example');
+  it('ключ уходит в секреты, в настройках — только его тип', async () => {
+    const prefs = fakePrefs();
+    const s = fakeSecrets();
+    expect(await saveConfig(prefs, s, cfg, undefined, { text: 'KEY' })).toEqual({ ok: true, data: undefined });
+    expect(s.store.key).toBe('KEY');
+    const stored = prefs.data.get('config')!;
+    expect(JSON.parse(stored)).toMatchObject({ host: '10.0.0.5', keyType: 'ed25519' });
+    expect(stored).not.toContain('KEY');
   });
 
-  it.each([
-    [{ port: 0 }],
-    [{ port: 70000 }],
-    [{ host: '' }],
-    [{ host: 'a b' }],
-    [{ username: 'Root;x' }],
-    [{ keyPath: '' }],
-    [{ theme: 'blue' }],
-  ])('отклоняет %j', (patch) => {
-    const r = saveConfig(dirs().userDataDir, { ...good, ...patch } as never);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error.code).toBe('CONFIG_INVALID');
-  });
-});
-
-describe('пароль', () => {
-  const cfg = { host: 'vm.example', port: 22, username: 'root', keyPath: '~/.ssh/id_ed25519', theme: 'system' as const };
-  // Фейковое «шифрование»: в тесте важно, что в файл идёт результат encrypt, а не сам пароль
-  const box: SecretBox = {
-    available: () => true,
-    encrypt: (s) => Buffer.from(`enc:${s}`),
-    decrypt: (b) => b.toString().replace(/^enc:/, ''),
-  };
-  const raw = (dir: string) => JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
-
-  it('сохраняется зашифрованным и не возвращается в конфиге', () => {
-    const dir = dirs().userDataDir;
-    expect(saveConfig(dir, cfg, 'секрет', box).ok).toBe(true);
-    expect(raw(dir).passwordEnc).toBe(Buffer.from('enc:секрет').toString('base64'));
-    expect(JSON.stringify(loadConfig({ userDataDir: dir }))).not.toContain('секрет');
-    expect(JSON.stringify(loadConfig({ userDataDir: dir }))).not.toContain('passwordEnc');
-    expect(loadConfig({ userDataDir: dir })!.hasPassword).toBe(true);
-    expect(loadPassword(dir, box)).toBe('секрет');
+  it('ключ с парольной фразой без неё — ошибка, ничего не сохранено', async () => {
+    const prefs = fakePrefs();
+    const s = fakeSecrets();
+    const r = await saveConfig(prefs, s, cfg, 'secret', { text: 'ENCRYPTED' });
+    expect(r).toEqual({ ok: false, error: { code: 'CONFIG_INVALID', message: 'Ключ защищён парольной фразой' } });
+    expect(prefs.data.has('config')).toBe(false);
+    expect(s.store.password).toBeUndefined();
   });
 
-  it('undefined не трогает пароль, null удаляет', () => {
-    const dir = dirs().userDataDir;
-    saveConfig(dir, cfg, 'секрет', box);
-    saveConfig(dir, { ...cfg, port: 2222 }, undefined, box);
-    expect(loadPassword(dir, box)).toBe('секрет');
-    expect(raw(dir).port).toBe(2222);
-    saveConfig(dir, cfg, null, box);
-    expect(loadPassword(dir, box)).toBeNull();
-    expect(loadConfig({ userDataDir: dir })!.hasPassword).toBeUndefined();
+  it('ключ с верной фразой сохраняется', async () => {
+    const s = fakeSecrets();
+    expect((await saveConfig(fakePrefs(), s, cfg, undefined, { text: 'ENCRYPTED', passphrase: 'pw' })).ok).toBe(true);
+    expect(s.store.key).toBe('ENCRYPTED');
   });
 
-  it('без шифрования пароль не сохраняется', () => {
-    const dir = dirs().userDataDir;
-    expect(saveConfig(dir, cfg, 'x', { ...box, available: () => false })).toMatchObject({
-      ok: false, error: { code: 'CONFIG_INVALID', message: expect.stringContaining('Шифрование недоступно') },
-    });
-    expect(() => raw(dir)).toThrow();
+  it('пароль: строка — сохранить, undefined — не трогать, null и пустая строка — удалить', async () => {
+    const prefs = fakePrefs();
+    const s = fakeSecrets();
+    await saveConfig(prefs, s, cfg, 'secret');
+    expect(s.store.password).toBe('secret');
+    await saveConfig(prefs, s, cfg, undefined);
+    expect(s.store.password).toBe('secret');
+    s.store.key = 'KEY';
+    await saveConfig(prefs, s, cfg, '');
+    expect(s.store.password).toBeUndefined();
+    await saveConfig(prefs, s, cfg, 'again');
+    await saveConfig(prefs, s, cfg, null);
+    expect(s.store.password).toBeUndefined();
   });
 
-  it('ключ не обязателен, если есть пароль', () => expect(validateConfig({ ...cfg, keyPath: '' }, true)).toBeNull());
-  it('ключ обязателен без пароля', () => expect(validateConfig({ ...cfg, keyPath: '' }, false)).not.toBeNull());
-  it('пустой ключ сохраняется вместе с новым паролем', () =>
-    expect(saveConfig(dirs().userDataDir, { ...cfg, keyPath: '' }, 'p', box).ok).toBe(true));
-
-  it('hasPassword из интерфейса не записывается в файл', () => {
-    const dir = dirs().userDataDir;
-    saveConfig(dir, { ...cfg, hasPassword: true }, undefined, box);
-    expect(raw(dir).hasPassword).toBeUndefined();
-    expect(raw(dir).passwordEnc).toBeUndefined();
+  it('пароль в настройки не попадает', async () => {
+    const prefs = fakePrefs();
+    await saveConfig(prefs, fakeSecrets(), cfg, 'secret');
+    expect(prefs.data.get('config')).not.toContain('secret');
   });
 
-  it('пустая строка пароля — то же, что удалить', () => {
-    const dir = dirs().userDataDir;
-    saveConfig(dir, cfg, 'секрет', box);
-    saveConfig(dir, cfg, '', box);
-    expect(loadPassword(dir, box)).toBeNull();
+  it('удалить ключ без пароля нельзя', async () => {
+    const s = fakeSecrets();
+    s.store.key = 'KEY';
+    const r = await saveConfig(fakePrefs(), s, cfg, undefined, null);
+    expect(r).toEqual({ ok: false, error: { code: 'CONFIG_INVALID', message: 'Импортируйте SSH-ключ или задайте пароль' } });
+    expect(s.store.key).toBe('KEY');
   });
 
-  it('повреждённый passwordEnc — null, без падения', () => {
-    const dir = dirs().userDataDir;
-    writeFileSync(join(dir, 'config.json'), JSON.stringify({ ...cfg, passwordEnc: '@@@' }));
-    expect(loadPassword(dir, { ...box, decrypt: () => { throw new Error('bad'); } })).toBeNull();
-  });
-});
-
-describe('пароль, который не расшифровать (другой профиль Windows)', () => {
-  const good = { host: 'vm.example', port: 22, username: 'root', keyPath: '~/.ssh/id_ed25519', theme: 'system' as const };
-  const box: SecretBox = { available: () => true, encrypt: (s) => Buffer.from(`enc:${s}`), decrypt: (b) => b.toString().replace(/^enc:/, '') };
-  const broken: SecretBox = { available: () => true, encrypt: box.encrypt, decrypt: () => { throw new Error('DPAPI'); } };
-
-  it('расшифровывается — «пароль сохранён»', () => {
-    const d = dirs();
-    saveConfig(d.userDataDir, good, 'secret', box);
-    expect(loadConfig(d, box)).toMatchObject({ hasPassword: true });
-    expect(loadConfig(d, box)).not.toHaveProperty('passwordUnreadable');
-  });
-
-  it('не расшифровывается — не «сохранён», а признак passwordUnreadable', () => {
-    const d = dirs();
-    saveConfig(d.userDataDir, good, 'secret', box);
-    const c = loadConfig(d, broken);
-    expect(c).not.toHaveProperty('hasPassword');
-    expect(c).toMatchObject({ passwordUnreadable: true });
-  });
-
-  it('признак не записывается в config.json при сохранении', () => {
-    const d = dirs();
-    saveConfig(d.userDataDir, { ...good, passwordUnreadable: true }, undefined, box);
-    expect(JSON.parse(readFileSync(join(d.userDataDir, 'config.json'), 'utf8'))).not.toHaveProperty('passwordUnreadable');
+  it('признаки из интерфейса (hasPassword, hasKey) в настройки не пишутся', async () => {
+    const prefs = fakePrefs();
+    await saveConfig(prefs, fakeSecrets(), { ...cfg, hasPassword: true, hasKey: true, passwordUnreadable: true }, 'p');
+    expect(Object.keys(JSON.parse(prefs.data.get('config')!))).not.toContain('hasPassword');
+    expect(Object.keys(JSON.parse(prefs.data.get('config')!))).not.toContain('hasKey');
   });
 });

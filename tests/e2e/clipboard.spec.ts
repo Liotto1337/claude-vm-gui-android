@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig } from './helpers';
+import { hasTestKey, launchApp, readClipboard, TEST_KEY, trustedKnownHosts, withConfig, writeClipboard } from './helpers';
 
 test.skip(!hasTestKey, 'нет тестового ключа');
 
@@ -17,7 +17,7 @@ test.afterAll(() => {
 test('скопированное в tmux и выделение с Shift попадают в буфер обмена', async () => {
   const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
   const { app, page } = await launchApp({ CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: trustedKnownHosts() });
-  const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText());
+  const clipboard = () => readClipboard(page);
   try {
     await expect(page.getByRole('navigation', { name: 'Сессии' })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Новая сессия' }).click();
@@ -28,7 +28,7 @@ test('скопированное в tmux и выделение с Shift попа
     await expect(page.getByText('в сессии bash')).toBeVisible({ timeout: 20_000 });
 
     // Как Claude Code: копирует изнутри панели через tmux load-buffer -w, tmux отдаёт текст терминалу через OSC 52
-    await app.evaluate(({ clipboard }) => clipboard.writeText('старое'));
+    await writeClipboard(page, 'старое');
     await page.locator('.xterm').click();
     await page.keyboard.type("printf 'Привет из tmux' | tmux load-buffer -w -\n");
     await expect.poll(clipboard).toBe('Привет из tmux');

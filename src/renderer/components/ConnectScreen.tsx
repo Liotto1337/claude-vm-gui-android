@@ -16,9 +16,8 @@ export function ConnectScreen() {
   const { config, preflight, connectError } = useAppState();
   const port = config?.port ?? 22;
   const steps: { step: PreflightStep; label: string }[] = [
-    { step: 'ping', label: 'Ping' },
     { step: 'tcp', label: `TCP, порт ${port}` },
-    { step: 'ssh', label: 'SSH по ключу' },
+    { step: 'ssh', label: 'SSH' },
     { step: 'tmux', label: 'Сессии tmux' },
   ];
   // Ошибка без шага (например, ключ хоста) показывается на шаге SSH
