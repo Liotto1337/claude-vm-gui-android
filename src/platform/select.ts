@@ -7,7 +7,7 @@ import type { Platform } from '@core/platform';
  */
 export async function selectPlatform(): Promise<Platform> {
   if (import.meta.env.MODE === 'android') {
-    const { androidPlatform } = await import('./android');
+    const { androidPlatform } = await import('./android-native');
     return androidPlatform();
   }
   const q = new URLSearchParams(location.search);

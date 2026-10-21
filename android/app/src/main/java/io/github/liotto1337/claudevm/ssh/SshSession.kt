@@ -370,15 +370,18 @@ class SshSession(
         runCatching { (channels[ch]?.cmd as? SessionChannel)?.changeWindowDimensions(cols, rows, 0, 0) }
     }
 
-    /** Запись файла по SFTP с правами 0600; onProgress — сколько байт отправлено. */
-    suspend fun writeFile(path: String, data: ByteArray, onProgress: (Long) -> Unit) = withContext(Dispatchers.IO) {
+    /**
+     * Запись файла по SFTP с правами 0600; onProgress — сколько байт отправлено.
+     * offset 0 — файл создаётся заново, иначе data дописывается с этого места (большой файл — частями).
+     */
+    suspend fun writeFile(path: String, data: ByteArray, offset: Long = 0, onProgress: (Long) -> Unit) = withContext(Dispatchers.IO) {
         need().newSFTPClient().use { sftp ->
-            val modes = EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
+            val modes = if (offset == 0L) EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC) else EnumSet.of(OpenMode.WRITE)
             sftp.open(path, modes, FileAttributes.Builder().withPermissions(0x180).build()).use { f ->
                 var off = 0
                 while (off < data.size) {
                     val n = minOf(ChunkSeq.MAX, data.size - off)
-                    f.write(off.toLong(), data, off, n)
+                    f.write(offset + off, data, off, n)
                     off += n
                     onProgress(off.toLong())
                 }

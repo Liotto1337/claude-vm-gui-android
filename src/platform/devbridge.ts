@@ -2,6 +2,7 @@ import type { ConnectionState, HostKeyPrompt, PreflightEvent, Result, VmConfig }
 import { Emitter } from '@core/emitter';
 import type { Channel, ConnectableTransport, ExecResult } from '@core/transport';
 import type { BridgeEvent, BridgeRequest, BridgeResponse } from './bridge-protocol';
+import { fromB64, SeqChannel, toB64 } from './seq-channel';
 
 type SocketLike = {
   readyState: number;
@@ -12,49 +13,9 @@ type SocketLike = {
   onclose: (() => void) | null;
 };
 
-const fromB64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-function toB64(bytes: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-
 class BridgeError extends Error {
   constructor(readonly code: string, message: string) {
     super(message);
-  }
-}
-
-/** Канал моста: пачки собираются по seq, чтобы порядок байтов не зависел от доставки. */
-class BridgeChannel extends Emitter implements Channel {
-  private next = 0;
-  private readonly held = new Map<number, { kind: 'data' | 'stderr'; bytes: Uint8Array }>();
-  readonly stderr = new Emitter();
-
-  constructor(private readonly ch: number, private readonly call: (r: BridgeRequest) => Promise<unknown>) {
-    super();
-  }
-
-  push(seq: number, kind: 'data' | 'stderr', bytes: Uint8Array): void {
-    this.held.set(seq, { kind, bytes });
-    for (let p = this.held.get(this.next); p; p = this.held.get(this.next)) {
-      this.held.delete(this.next++);
-      if (p.kind === 'data') this.emit('data', p.bytes);
-      else this.stderr.emit('data', p.bytes);
-    }
-  }
-
-  write(data: string): void {
-    void this.call({ op: 'write', ch: this.ch, data }).catch(() => {});
-  }
-  end(): void {
-    void this.call({ op: 'end', ch: this.ch }).catch(() => {});
-  }
-  close(): void {
-    void this.call({ op: 'close', ch: this.ch }).catch(() => {});
-  }
-  setWindow(rows: number, cols: number): void {
-    void this.call({ op: 'resize', ch: this.ch, rows, cols }).catch(() => {});
   }
 }
 
@@ -66,7 +27,7 @@ export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: st
   const ws = new WS(url);
   const events = new Emitter();
   const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void; onProgress?: (n: number) => void }>();
-  const channels = new Map<number, BridgeChannel>();
+  const channels = new Map<number, SeqChannel>();
   const queue: string[] = [];
   let nextId = 1;
   let closed = false;
@@ -79,7 +40,7 @@ export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: st
     closed = true;
     for (const p of pending.values()) p.reject(new BridgeError('NOT_CONNECTED', 'NOT_CONNECTED'));
     pending.clear();
-    for (const c of channels.values()) c.emit('close');
+    for (const c of channels.values()) c.closedByPeer();
     channels.clear();
     if (state.state !== 'idle') {
       state = { state: 'failed' };
@@ -118,7 +79,7 @@ export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: st
       case 'close': {
         const c = channels.get(m.ch);
         channels.delete(m.ch);
-        c?.emit('close');
+        c?.closedByPeer();
         break;
       }
       case 'progress':
@@ -140,7 +101,13 @@ export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: st
 
   const openChannel = async (r: BridgeRequest): Promise<Channel> => {
     const { ch } = (await call(r)) as { ch: number };
-    const c = new BridgeChannel(ch, call);
+    const quiet = (r: BridgeRequest) => void call(r).catch(() => {});
+    const c = new SeqChannel({
+      write: (data) => quiet({ op: 'write', ch, data }),
+      end: () => quiet({ op: 'end', ch }),
+      close: () => quiet({ op: 'close', ch }),
+      resize: (rows, cols) => quiet({ op: 'resize', ch, rows, cols }),
+    });
     channels.set(ch, c);
     return c;
   };

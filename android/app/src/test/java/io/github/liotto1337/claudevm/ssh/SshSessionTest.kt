@@ -162,7 +162,8 @@ class SshSessionTest {
         val data = ByteArray(204_800) { (it % 253).toByte() }
         val progress = Collections.synchronizedList(mutableListOf<Long>())
         val path = "/tmp/cvg-sftp-${System.nanoTime()}.bin"
-        s.writeFile(path, data) { progress.add(it) }
+        s.writeFile(path, data.copyOfRange(0, 100_000)) { progress.add(it) }
+        s.writeFile(path, data.copyOfRange(100_000, data.size), offset = 100_000) { progress.add(100_000 + it) }
         val sha = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
         assertEquals("$sha 600", s.exec("sha256sum $path | cut -d' ' -f1 | tr -d '\\n'; echo -n ' '; stat -c %a $path; rm -f $path").stdout.trim())
         assertEquals(204_800L, progress.last())
