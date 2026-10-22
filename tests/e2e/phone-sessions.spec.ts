@@ -71,3 +71,34 @@ test('долгое нажатие на пустое место списка — 
     await app.close();
   }
 });
+
+/** Перенос пальцем: касание ручки и ведение до точки (to — центр/верх строки-цели). */
+async function dragTouch(page: Page, handle: Locator, to: { x: number; y: number }) {
+  const h = (await handle.boundingBox())!;
+  const from = { x: h.x + h.width / 2, y: h.y + h.height / 2 };
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] });
+  const steps = 8;
+  for (let i = 1; i <= steps; i++)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps }] });
+  await page.waitForTimeout(100);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+const order = (page: Page) => nav(page).locator('.session-name:visible').allTextContents();
+
+test('перенос ручкой ⋮⋮: третья сессия — на место первой, порядок переживает перезапуск', async () => {
+  let l = await open();
+  try {
+    const target = (await item(l.page, 'cvg-test-a').boundingBox())!;
+    await dragTouch(l.page, item(l.page, 'cvg-test-c').locator('xpath=..').getByRole('button', { name: 'Перенести' }), { x: target.x + 40, y: target.y + 6 });
+    await expect.poll(() => order(l.page)).toEqual(['cvg-test-c', 'cvg-test-a', 'cvg-test-b']);
+  } finally {
+    await l.app.close();
+  }
+  l = await open();
+  try {
+    await expect.poll(() => order(l.page)).toEqual(['cvg-test-c', 'cvg-test-a', 'cvg-test-b']);
+  } finally {
+    await l.app.close();
+  }
+});

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { LayoutItem, SidebarLayout, TmuxSession } from '@shared/ipc';
 import {
   createGroup, deleteGroup, move, moveToGroup, paginate, removeFromGroup, renameGroup, rowsOf, toggleCollapsed, togglePin,
@@ -11,6 +11,7 @@ import { GroupNameDialog } from './GroupNameDialog';
 import { IconChevron, IconChevronLeft, IconChevronRight, IconClose, IconFolder, IconPin, IconPlus } from './icons';
 import { longPress } from '../long-press';
 import { usePhone } from '../use-phone';
+import { applyDrop, dropEdge as edgeAt, groupById, groupIndex, rowKey, type Drop } from '../drop';
 
 /** Высоты строк — как в app.css (.row-*): по ним список делится на страницы. */
 export const ROW_HEIGHTS = { section: 28, divider: 17, group: 34, session: 52 } as const;
@@ -19,7 +20,6 @@ const PAGE_FLIP_MS = 600;
 const DND = 'application/x-cvg';
 
 type Group = Extract<LayoutItem, { kind: 'group' }>;
-type Drop = { key: string; edge: 'before' | 'after' | 'into' } | null;
 /** ref — сессия или группа; list — пустое место списка */
 type Menu = { x: number; y: number; ref: ItemRef | 'list'; sheet?: boolean } | null;
 type Dialog =
@@ -29,7 +29,6 @@ type Dialog =
   | { kind: 'kill'; name: string }
   | null;
 
-const rowKey = (r: Row) => (r.kind === 'session' ? `s:${r.name}` : r.kind === 'group' ? `g:${r.id}` : r.kind);
 const refKey = (ref: ItemRef) => ('session' in ref ? `s:${ref.session}` : `g:${ref.group}`);
 
 /** Где лежит сессия и закреплена ли. */
@@ -44,8 +43,6 @@ function whereIs(l: SidebarLayout, name: string): { group: Group | null; index: 
   }
   return null;
 }
-const groupById = (l: SidebarLayout, id: string) => l.items.find((i): i is Group => i.kind === 'group' && i.id === id) ?? null;
-const groupIndex = (l: SidebarLayout, id: string) => l.items.findIndex((i) => i.kind === 'group' && i.id === id);
 
 /** onNewSession — диалог новой сессии (group — сразу в эту группу). */
 export function SessionList({ onNewSession }: { onNewSession: (group?: string) => void }) {
@@ -108,13 +105,8 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
     setDrop(null);
     if (flip.current) clearTimeout(flip.current);
   };
-  const dropEdge = (e: DragEvent, row: Row): Drop => {
-    if (!drag) return null;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const after = e.clientY > rect.top + rect.height / 2;
-    if (row.kind === 'group' && 'session' in drag) return { key: rowKey(row), edge: 'into' };
-    return { key: rowKey(row), edge: after ? 'after' : 'before' };
-  };
+  const dropEdge = (e: DragEvent, row: Row): Drop =>
+    drag ? edgeAt(drag, row, e.clientY, (e.currentTarget as HTMLElement).getBoundingClientRect()) : null;
   const onDragOver = (e: DragEvent, row: Row) => {
     if (!drag || (row.kind !== 'session' && row.kind !== 'group')) return;
     e.preventDefault();
@@ -128,22 +120,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
     const d = dropEdge(e, row);
     endDrag();
     if (!ref || !d) return;
-    updateLayout((l) => {
-      if (row.kind === 'group' && d.edge === 'into' && 'session' in ref) return moveToGroup(l, ref.session, row.id);
-      const after = d.edge === 'after' ? 1 : 0;
-      if ('group' in ref || (row.kind === 'session' && row.group === null) || row.kind === 'group') {
-        // Группы — только на верхнем уровне: место считается по группе строки
-        const topId = row.kind === 'group' ? row.id : row.kind === 'session' && row.group ? row.group : null;
-        const index = topId
-          ? groupIndex(l, topId) + after
-          : l.items.findIndex((i) => i.kind === 'session' && i.name === (row as { name: string }).name) + after;
-        return move(l, ref, { group: null, index });
-      }
-      if (row.kind !== 'session' || row.group === null) return l;
-      const g = groupById(l, row.group);
-      const index = (g?.sessions.findIndex((m) => m.name === row.name) ?? 0) + after;
-      return move(l, ref, { group: row.group, index });
-    });
+    updateLayout((l) => applyDrop(l, ref, row, d));
   };
   const flipOnHover = (to: number) => () => {
     if (!drag) return;
@@ -153,6 +130,56 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
   const cancelFlip = () => {
     if (flip.current) clearTimeout(flip.current);
   };
+
+  // Перенос пальцем за ручку ⋮⋮ (телефон): та же линия вставки и тот же applyDrop, что у мыши
+  const rowByKey = useMemo(() => new Map(rows.map((r) => [rowKey(r), r])), [rows]);
+  const startTouchDrag = (e: PointerEvent<HTMLButtonElement>, ref: ItemRef) => {
+    if (e.pointerType !== 'touch') return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    setDrag(ref);
+    let target: { row: Row; drop: Drop } | null = null;
+    let flipTo: number | null = null;
+    const move = (ev: globalThis.PointerEvent) => {
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      // Палец на стрелке страницы — перелистнуть, как при наведении мышью
+      const pager = under?.closest<HTMLButtonElement>('.pager-btn');
+      const to = pager ? (pager.getAttribute('aria-label') === 'Следующая страница' ? 1 : -1) : null;
+      if (to !== flipTo) {
+        flipTo = to;
+        cancelFlip();
+        if (to !== null) flip.current = setTimeout(() => setPage((p) => Math.max(0, Math.min(pages.length - 1, p + to))), PAGE_FLIP_MS);
+      }
+      const keyEl = under?.closest<HTMLElement>('[data-key]');
+      const row = keyEl ? rowByKey.get(keyEl.dataset.key ?? '') : undefined;
+      const li = keyEl?.closest('li');
+      const d = row && li ? edgeAt(ref, row, ev.clientY, li.getBoundingClientRect()) : null;
+      target = row && d ? { row, drop: d } : null;
+      setDrop(d);
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', cancel);
+      const t = target;
+      endDrag();
+      if (t?.drop) updateLayout((l) => applyDrop(l, ref, t.row, t.drop!));
+    };
+    const cancel = () => {
+      target = null;
+      up();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', cancel);
+  };
+  const dragHandle = (ref: ItemRef) =>
+    phone ? (
+      <button type="button" className="drag-handle" aria-label="Перенести" tabIndex={-1} onPointerDown={(e) => startTouchDrag(e, ref)}>
+        ⋮⋮
+      </button>
+    ) : null;
 
   // ── Клавиатура ──
   const shift = (ref: ItemRef, delta: -1 | 1) =>
@@ -280,6 +307,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
           </span>
           <span className="session-cwd ellipsis">{shortPath(s.cwd)}</span>
         </button>
+        {dragHandle(ref)}
       </li>
     );
   };
@@ -308,6 +336,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
           {r.continued ? <span className="caption">продолжение</span> : <span className="group-count">{count}</span>}
           {g.pinned ? <span className="pin"><IconPin /></span> : null}
         </button>
+        {r.continued ? null : dragHandle(ref)}
       </li>
     );
   };
