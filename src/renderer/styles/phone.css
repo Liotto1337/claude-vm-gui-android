@@ -55,3 +55,21 @@
 .key { min-width: 40px; height: 36px; padding: 0 8px; border-radius: 8px; border: 0.5px solid var(--border-strong); background: var(--panel); color: var(--text); font: 14px var(--font-mono); flex: none; touch-action: manipulation; }
 .key[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .copy-btn { position: absolute; top: 8px; right: 8px; z-index: 2; }
+
+/* Нижний лист */
+.sheet-scrim { position: fixed; inset: 0; z-index: 25; background: var(--overlay); display: flex; align-items: flex-end; }
+.sheet {
+  width: 100%;
+  max-height: 80dvh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  padding: 8px 12px calc(16px + env(safe-area-inset-bottom));
+  box-shadow: var(--shadow);
+  transition: transform 150ms ease-out;
+}
+.sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 4px auto 10px; }
+.sheet-title { margin: 0 4px 8px; font-family: var(--font-serif); font-size: 18px; font-weight: 500; }
+.sheet-section { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.sheet .choice-item { min-height: 48px; }

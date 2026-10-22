@@ -4,10 +4,12 @@ import type { HintCommand, Hints, ImageExt, ModelInfo, ParsedMenu, TmuxSession }
 import { api } from '../api';
 import { addPending, dropPending, markPendingSent, refreshSessions, rememberChoice, useAppState } from '../state';
 import { AttachmentChip, type Attachment } from './AttachmentChip';
-import { ChoiceMenu } from './ChoiceMenu';
+import { BottomSheet } from './BottomSheet';
+import { ChoiceList, ChoiceMenu, type Choice } from './ChoiceMenu';
 import { HintPopup, type HintItem } from './HintPopup';
-import { IconArrowUp, IconClip } from './icons';
+import { IconArrowUp, IconChevron, IconClip } from './icons';
 import { MenuCard } from './MenuCard';
+import { usePhone } from '../use-phone';
 
 const MIME_EXT: Record<string, ImageExt> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -26,6 +28,9 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
   const menuOpen = menu !== null;
   const { choices } = useAppState();
   const choice = choices[session.name] ?? {};
+  const phone = usePhone();
+  // Телефон: модель и effort — одной кнопкой, выбор в нижнем листе
+  const [sheet, setSheet] = useState(false);
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const [hints, setHints] = useState<Hints | null>(null);
@@ -201,6 +206,18 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
   const models = hints?.models.length ? hints.models : FALLBACK_MODELS;
   const model = models.find((m) => m.value === choice.model) ?? models.find((m) => m.value === 'default');
   const efforts = model?.efforts.length ? model.efforts : FALLBACK_EFFORTS;
+  const modelChoices: Choice[] = models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }));
+  const effortChoices: Choice[] = efforts.map((e) => ({ value: e, label: e }));
+  const pickModel = (c: Choice) =>
+    void api.term.setModel(c.value).then((r) => {
+      setSendError(r.ok ? null : r.error.message);
+      if (r.ok) rememberChoice(session.name, { model: c.value, modelLabel: c.label });
+    });
+  const pickEffort = (c: Choice) =>
+    void api.term.setEffort(c.value).then((r) => {
+      setSendError(r.ok ? null : r.error.message);
+      if (r.ok) rememberChoice(session.name, { effort: c.value });
+    });
 
   return (
     <div className="composer-wrap" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
@@ -274,32 +291,31 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
               }}
             />
             <div className="grow" />
-            <ChoiceMenu
-              buttonLabel={choice.modelLabel ? `Модель: ${choice.modelLabel}` : 'Модель'}
-              menuLabel="Модель"
-              title="Модель · отправит /model"
-              choices={models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))}
-              selected={choice.model}
-              onSelect={(c) =>
-                void api.term.setModel(c.value).then((r) => {
-                  setSendError(r.ok ? null : r.error.message);
-                  if (r.ok) rememberChoice(session.name, { model: c.value, modelLabel: c.label });
-                })
-              }
-            />
-            <ChoiceMenu
-              buttonLabel={choice.effort ? `Effort: ${choice.effort}` : 'Effort'}
-              menuLabel="Effort"
-              title="Effort · отправит /effort"
-              choices={efforts.map((e) => ({ value: e, label: e }))}
-              selected={choice.effort}
-              onSelect={(c) =>
-                void api.term.setEffort(c.value).then((r) => {
-                  setSendError(r.ok ? null : r.error.message);
-                  if (r.ok) rememberChoice(session.name, { effort: c.value });
-                })
-              }
-            />
+            {phone ? (
+              <button type="button" className="choice-btn" aria-label="Модель и effort" onClick={() => setSheet(true)}>
+                {[choice.modelLabel ?? 'Модель', choice.effort ?? 'effort'].join(' · ')}
+                <IconChevron />
+              </button>
+            ) : (
+              <>
+                <ChoiceMenu
+                  buttonLabel={choice.modelLabel ? `Модель: ${choice.modelLabel}` : 'Модель'}
+                  menuLabel="Модель"
+                  title="Модель · отправит /model"
+                  choices={modelChoices}
+                  selected={choice.model}
+                  onSelect={pickModel}
+                />
+                <ChoiceMenu
+                  buttonLabel={choice.effort ? `Effort: ${choice.effort}` : 'Effort'}
+                  menuLabel="Effort"
+                  title="Effort · отправит /effort"
+                  choices={effortChoices}
+                  selected={choice.effort}
+                  onSelect={pickEffort}
+                />
+              </>
+            )}
             {chatMode && working && !menuOpen ? (
               <button type="button" className="btn btn-sm" onClick={() => void api.chat.key('esc')}>Остановить · Esc</button>
             ) : null}
@@ -310,7 +326,17 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
         </div>
       </div>
       {sendError ? <p className="form-error" role="alert">{sendError}</p> : null}
-      <div className="composer-help">Enter — отправить · Shift+Enter — новая строка · Ctrl+V или перетаскивание — картинка</div>
+      {phone ? null : <div className="composer-help">Enter — отправить · Shift+Enter — новая строка · Ctrl+V или перетаскивание — картинка</div>}
+      <BottomSheet open={sheet} title="Модель и effort" onClose={() => setSheet(false)}>
+        <div role="menu" aria-label="Модель" className="sheet-section">
+          <div className="caption choice-title">Модель · отправит /model</div>
+          <ChoiceList choices={modelChoices} selected={choice.model} onSelect={pickModel} />
+        </div>
+        <div role="menu" aria-label="Effort" className="sheet-section">
+          <div className="caption choice-title">Effort · отправит /effort</div>
+          <ChoiceList choices={effortChoices} selected={choice.effort} onSelect={pickEffort} />
+        </div>
+      </BottomSheet>
     </div>
   );
 }
