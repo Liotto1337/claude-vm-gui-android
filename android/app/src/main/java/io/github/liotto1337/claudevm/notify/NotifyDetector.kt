@@ -12,6 +12,9 @@ object NotifyDetector {
     private val PROMPT = Regex("^\\s*❯[\\s ]?")
     private val SPINNER = Regex("^\\s*[·✢✳✶✻✽✺*]\\s+(.+)$")
     private val INTERRUPT = Regex("esc to interrupt", RegexOption.IGNORE_CASE)
+    private val TABS = Regex("^←\\s+(.+?)\\s+→$")
+    private val REVIEW = Regex("^Ready to submit your answers\\?$")
+    private val NUMBERED = Regex("^\\s*(?:❯\\s*)?\\d+\\.\\s")
 
     fun state(screen: String): State {
         val plain = stripAnsi(screen)
@@ -20,7 +23,7 @@ object NotifyDetector {
         return if (busy(plain)) State.BUSY else State.IDLE
     }
 
-    /** Первая непустая строка под границей (`─` или `▔`) над выбранным вариантом, до 120 символов. */
+    /** Первая непустая строка под границей (`─` или `▔`) над выбранным вариантом (кроме строки вкладок), до 120 символов. */
     fun question(screen: String): String? {
         val lines = stripAnsi(screen).split('\n')
         val f = menuFooterIndex(lines.joinToString("\n"))
@@ -29,7 +32,7 @@ object NotifyDetector {
         while (s >= 0 && !Regex("^\\s*❯\\s").containsMatchIn(lines[s])) s--
         var r = s - 1
         while (r >= 0 && !isBoundary(lines[r])) r--
-        return lines.subList(r + 1, maxOf(r + 1, s)).firstOrNull { it.isNotBlank() }?.trim()?.take(120)
+        return lines.subList(r + 1, maxOf(r + 1, s)).firstOrNull { it.isNotBlank() && !TABS.matches(it.trim()) }?.trim()?.take(120)
     }
 
     fun stripAnsi(s: String, dropDim: Boolean = false): String {
@@ -86,8 +89,17 @@ object NotifyDetector {
     private fun menuFooterIndex(plain: String): Int {
         val lines = plain.split('\n').map { it.trimEnd() }
         val tail = lines.withIndex().filter { it.value.isNotBlank() }.takeLast(3)
-        val footer = tail.reversed().firstOrNull { DIALOG_FOOTER.containsMatchIn(it.value) } ?: return -1
+        val footer = tail.reversed().firstOrNull { DIALOG_FOOTER.containsMatchIn(it.value) } ?: return reviewEnd(lines)
         val box = inputBox(lines)
         return if (box != null && box.second > footer.index) -1 else footer.index
+    }
+
+    /** «Review your answers» рисуется без подсказки внизу: после «Ready to submit…» — только варианты. */
+    private fun reviewEnd(lines: List<String>): Int {
+        val filled = lines.filter { it.isNotBlank() }
+        val at = filled.indexOfFirst { REVIEW.matches(it.trim()) }
+        if (at < 0) return -1
+        val after = filled.drop(at + 1)
+        return if (after.size >= 2 && after.all { NUMBERED.containsMatchIn(it) }) lines.size else -1
     }
 }

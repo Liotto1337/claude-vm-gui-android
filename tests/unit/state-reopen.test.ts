@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ScreenEvent, TmuxSession } from '../../src/shared/ipc';
+import type { ScreenEvent, ScreenState, TmuxSession } from '../../src/shared/ipc';
 
 // Повторный выбор той же сессии (касание уведомления о ней, касание открытой сессии в списке) не переоткрывает
 // терминал, наблюдение за экраном не перезапускается и шлёт события только при изменении — экран сбрасывать нельзя
@@ -18,7 +18,7 @@ vi.mock('../../src/renderer/api', () => ({
   },
 }));
 
-const menu = { kind: 'menu' as const, menu: { title: 'Выбор', context: [], code: [], options: [], notes: [], hint: null } };
+const menu: ScreenState = { kind: 'menu' as const, menu: { title: 'Выбор', context: [], code: [], options: [], notes: [], hint: null, kind: 'single' as const, tabs: null, axis: null } };
 
 describe('повторный выбор открытой сессии', () => {
   beforeEach(() => {

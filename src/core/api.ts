@@ -1,10 +1,13 @@
 import type { Api } from '@shared/ipc';
+import { UpdateChecker } from '@shared/update-checker';
 import { externalUrl } from '@shared/links';
 import { loadConfig, saveConfig } from './config';
 import { AppController } from './controller';
 import { Emitter } from './emitter';
 import { LayoutStore } from './layout-store';
 import type { Platform } from './platform';
+
+declare const __APP_VERSION__: string;
 
 const darkQuery = () => (typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null);
 
@@ -23,8 +26,18 @@ export function createApi(p: Platform): Api {
   // Страница скрылась или приложение свёрнуто (Android сообщает это через платформу): отложенная запись раскладки
   // не должна теряться, а опросы по SSH встают до возвращения
   const flush = () => void layouts.flush();
+  // Новая версия на GitHub — проверяем, только пока приложение на экране
+  const updates = new UpdateChecker('Liotto1337/claude-vm-gui-android', __APP_VERSION__, async (url) => {
+    const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  });
+  updates.on('available', (u) => emit('updates:available', u));
+  updates.start();
   const setVisible = (visible: boolean) => {
     if (!visible) flush();
+    if (visible) updates.start();
+    else updates.stop();
     c.setHidden(!visible);
   };
   if (typeof document !== 'undefined') {
@@ -73,7 +86,7 @@ export function createApi(p: Platform): Api {
       setEffort: c.termSetEffort,
     },
     hints: { get: c.hintsGet, files: c.hintsFiles, dirs: c.hintsDirs },
-    upload: { image: c.uploadImage, onProgress: on('upload:progress') },
+    upload: { file: c.uploadFile, onProgress: on('upload:progress'), read: c.uploadRead },
     clipboard: {
       read: () => p.clipboard.read().catch(() => ''),
       write: (text) => {
@@ -98,6 +111,13 @@ export function createApi(p: Platform): Api {
       onUnavailable: on('chat:unavailable'),
       loadEarlier: c.chatLoadEarlier,
       key: c.chatKey,
+      typeText: c.chatTypeText,
+    },
+    updates: {
+      get: async () => updates.latest,
+      onAvailable: on('updates:available'),
+      dismissed: () => p.prefs.get('dismissedUpdate'),
+      dismiss: (version) => p.prefs.set('dismissedUpdate', String(version)),
     },
     platform: {
       theme: async () => (darkQuery()?.matches ? 'dark' : 'light'),

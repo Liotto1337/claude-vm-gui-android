@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig, type Launched } from './helpers';
@@ -89,12 +89,15 @@ test('меню: карточка, стрелка вниз и Enter выбира�
     await expect(feed(page)).toBeVisible({ timeout: 15_000 });
     await composer(page).fill('menu');
     await composer(page).press('Enter');
-    const card = page.getByRole('group', { name: 'Выбор' });
+    // Карточка — последним элементом ленты, варианты — радиокнопки; над полем ввода карточки нет
+    const card = feed(page).getByRole('group', { name: 'Выбор' });
     await expect(card).toBeVisible({ timeout: 10_000 });
-    await expect(card.getByRole('option', { name: /Да и не спрашивать/ })).toBeVisible();
+    await expect(page.locator('.menu-layer')).toHaveCount(0);
+    expect(await card.evaluate((el) => !el.nextElementSibling || el.nextElementSibling.classList.contains('chat-status'))).toBe(true);
+    await expect(card.getByRole('radiogroup').getByRole('radio', { name: /Да и не спрашивать/ })).toBeVisible();
     await expect(composer(page)).toBeDisabled();
     await page.keyboard.press('ArrowDown');
-    await expect(card.getByRole('option', { name: /Да и не спрашивать/ })).toHaveAttribute('aria-selected', 'true', { timeout: 5000 });
+    await expect(card.getByRole('radio', { name: /Да и не спрашивать/ })).toHaveAttribute('aria-checked', 'true', { timeout: 5000 });
     await page.keyboard.press('Enter');
     await expect(card).toBeHidden({ timeout: 5000 });
     await expect(feed(page).getByText('выбран 2')).toBeVisible({ timeout: 10_000 });
@@ -211,8 +214,8 @@ test('меню: клик по варианту', async () => {
     await expect(feed(page)).toBeVisible({ timeout: 15_000 });
     await composer(page).fill('menu');
     await composer(page).press('Enter');
-    const card = page.getByRole('group', { name: 'Выбор' });
-    await card.getByRole('option', { name: /Нет/ }).click({ timeout: 10_000 });
+    const card = feed(page).getByRole('group', { name: 'Выбор' });
+    await card.getByRole('radio', { name: /Нет/ }).click({ timeout: 10_000 });
     await expect(feed(page).getByText('выбран 3')).toBeVisible({ timeout: 10_000 });
   } finally {
     await app.close();
@@ -369,6 +372,123 @@ test('после щелчка по ленте ↑ во время «печати
     await expect(answer).toContainText('Конец ответа.', { timeout: 5000 });
     await l.page.waitForTimeout(300);
     expect(await fromBottom(l.page)).toBeGreaterThan(20);
+  } finally {
+    await l.app.close();
+  }
+});
+
+test('поле пустеет сразу при отправке; следующее можно набирать, отправить — после доставки', async () => {
+  tmux('new-session', '-d', '-s', 'cvg-test-slow', '-x', '120', '-y', '40', `CVG_FAKE_SLOW_ACCEPT=1 CVG_CLAUDE_DIR=${claudeDir} node ${FAKE}`);
+  const { app, page } = await open('cvg-test-slow');
+  try {
+    await expect(feed(page)).toBeVisible({ timeout: 15_000 });
+    await composer(page).fill('уходит сразу');
+    await composer(page).press('Enter');
+    // Claude Code примет сообщение не раньше чем через 1,2 с (CVG_FAKE_SLOW_ACCEPT) — поле пусто раньше, пузырь ещё «отправляется»
+    await expect(composer(page)).toHaveValue('', { timeout: 1000 });
+    await expect(feed(page).locator('.bubble.is-sending', { hasText: 'уходит сразу' })).toBeVisible({ timeout: 100 });
+    await composer(page).fill('следующее');
+    await expect(page.getByRole('button', { name: 'Отправить' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Отправить' })).toBeEnabled({ timeout: 10_000 });
+    await expect(composer(page)).toHaveValue('следующее');
+  } finally {
+    await app.close();
+  }
+});
+
+test('в режиме «Терминал» на телефоне поле ввода остаётся, черновик тот же', async () => {
+  const { app, page } = await open();
+  try {
+    await expect(feed(page)).toBeVisible({ timeout: 15_000 });
+    await composer(page).fill('черновик');
+    await page.getByRole('button', { name: 'Терминал', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Терминал' })).toBeVisible();
+    await expect(composer(page)).toHaveValue('черновик');
+    await page.getByRole('button', { name: 'Лента', exact: true }).click();
+    await expect(composer(page)).toHaveValue('черновик');
+  } finally {
+    await app.close();
+  }
+});
+
+test('вложения в ленте: картинка целиком, текстовый файл раскрывается, картинка — на весь экран', async () => {
+  const UPLOADS = join(homedir(), '.cache/claude-vm-gui/uploads');
+  const before = new Set(existsSync(UPLOADS) ? readdirSync(UPLOADS) : []);
+  const { app, page } = await open();
+  try {
+    await expect(feed(page)).toBeVisible({ timeout: 15_000 });
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.locator('input[type=file]').setInputFiles([
+      { name: 'pic.png', mimeType: 'image/png', buffer: PNG },
+      { name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') },
+    ]);
+    await expect(page.locator('.chip', { hasText: 'загружено' })).toHaveCount(2, { timeout: 15_000 });
+    await composer(page).fill('вложения');
+    await composer(page).press('Enter');
+    const bubble = feed(page).locator('.bubble:not(.is-sending)', { hasText: 'вложения' });
+    await expect(bubble).toBeVisible({ timeout: 15_000 });
+    const img = bubble.locator('img.chat-image');
+    await expect(img).toBeVisible();
+    expect(await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const row = bubble.getByRole('button', { name: /a\.txt/ });
+    await expect(row).toContainText('5 Б', { timeout: 10_000 });
+    await row.click();
+    await expect(bubble.locator('pre', { hasText: 'hello' })).toBeVisible();
+    await img.click();
+    await expect(page.locator('.lightbox')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.lightbox')).toHaveCount(0);
+  } finally {
+    await app.close();
+    if (existsSync(UPLOADS)) for (const f of readdirSync(UPLOADS)) if (!before.has(f)) rmSync(join(UPLOADS, f));
+  }
+});
+
+test('множественный выбор в ленте: чекбоксы и «Готово»', async () => {
+  const { app, page } = await open();
+  try {
+    await expect(feed(page)).toBeVisible({ timeout: 15_000 });
+    await composer(page).fill('menu-multi');
+    await composer(page).press('Enter');
+    const card = feed(page).getByRole('group', { name: 'Какие цвета?' });
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    const boxes = card.getByRole('checkbox');
+    await expect(boxes).toHaveCount(3);
+    await expect(card.getByRole('checkbox', { name: /Submit/ })).toHaveCount(0);
+    await card.getByRole('checkbox', { name: /Да и не спрашивать/ }).click();
+    await expect(card.getByRole('checkbox', { name: /Да и не спрашивать/ })).toHaveAttribute('aria-checked', 'true', { timeout: 5000 });
+    await card.getByRole('checkbox', { name: /^Нет/ }).click();
+    await expect(card.getByRole('checkbox', { name: /^Нет/ })).toHaveAttribute('aria-checked', 'true', { timeout: 5000 });
+    await card.getByRole('button', { name: 'Готово' }).click();
+    await expect(feed(page).getByText('выбраны: Да и не спрашивать, Нет')).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test('итог ответа на меню остаётся в ленте на месте карточки, и после перезапуска', async () => {
+  let l = await open();
+  try {
+    await expect(feed(l.page)).toBeVisible({ timeout: 15_000 });
+    await composer(l.page).fill('menu');
+    await composer(l.page).press('Enter');
+    await feed(l.page).getByRole('group', { name: 'Выбор' }).getByRole('radio', { name: /Нет/ }).click({ timeout: 10_000 });
+    const note = feed(l.page).locator('.note', { hasText: 'Выбор → выбрано: Нет' });
+    await expect(note).toBeVisible({ timeout: 10_000 });
+    // После сообщения «menu» и до ответа Claude
+    const order = await feed(l.page).locator('.bubble, .note, .md').allTextContents();
+    const at = order.findIndex((t) => t.includes('Выбор → выбрано: Нет'));
+    expect(order[at - 1]).toContain('menu');
+    expect(order.slice(at + 1).join(' ')).toContain('выбран 3');
+  } finally {
+    await l.app.close();
+  }
+  l = await launchApp({
+    CVG_USER_DATA: l.userData, CVG_KNOWN_HOSTS: trustedKnownHosts(), CVG_TMUX_SOCKET: SOCK, CVG_CLAUDE_DIR: claudeDir, CVG_TEST_HOOKS: '1',
+  });
+  try {
+    await l.page.getByRole('navigation', { name: 'Сессии' }).getByRole('button', { name: /^cvg-test-claude\b/ }).click({ timeout: 20_000 });
+    await expect(feed(l.page).locator('.note', { hasText: 'Выбор → выбрано: Нет' })).toBeVisible({ timeout: 15_000 });
   } finally {
     await l.app.close();
   }

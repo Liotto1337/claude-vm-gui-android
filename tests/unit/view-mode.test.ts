@@ -3,7 +3,7 @@ import type { ChatEvent, ChatItem, ScreenState } from '../../src/shared/ipc';
 import { mergeItems, viewMode } from '../../src/renderer/view-mode';
 
 const prompt: ScreenState = { kind: 'prompt', status: null, input: '' };
-const menu: ScreenState = { kind: 'menu', menu: { title: 'x', context: [], code: [], options: [], notes: [], hint: null } };
+const menu: ScreenState = { kind: 'menu', menu: { title: 'x', context: [], code: [], options: [], notes: [], hint: null, kind: 'single', tabs: null, axis: null } };
 const base = { claudeRunning: true, screen: prompt as ScreenState | null, unavailable: false, override: null as 'terminal' | null };
 
 describe('viewMode', () => {
@@ -18,7 +18,7 @@ describe('viewMode', () => {
 });
 
 describe('mergeItems', () => {
-  const u = (id: string, text = id): ChatItem => ({ kind: 'user', id, text, images: 0 });
+  const u = (id: string, text = id): ChatItem => ({ kind: 'user', id, text, images: [], files: [] });
   const ev = (items: ChatItem[], patch: Partial<ChatEvent> = {}): ChatEvent => ({ session: 's', reset: false, prepend: false, items, hasEarlier: false, ...patch });
   it('upsert по id: обновление на месте, новые в конец', () =>
     expect(mergeItems([u('a'), u('b')], ev([u('a', 'A'), u('c')]))).toEqual([u('a', 'A'), u('b'), u('c')]));

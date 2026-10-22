@@ -2,7 +2,7 @@
 // Фейковый Claude Code для тестов: рисует поле ввода как настоящий (линии «─», «❯», серая подсказка),
 // включает bracketed paste и воспроизводит баг: вставка «обрабатывается» 250 мс, всё пришедшее за это время
 // (в том числе Enter) теряется. Пишет sessions/<pid>.json и журнал, если задан CVG_CLAUDE_DIR.
-// Команды: «menu» — меню из трёх вариантов; «busy» — 3 с «работы»; «long» — длинный ответ в журнал;
+// Команды: «menu» — меню из трёх вариантов; «menu-multi» — множественный выбор (как Claude Code 2.1.308); «busy» — 3 с «работы»; «long» — длинный ответ в журнал;
 // «grow» — ответ, который через 300 мс дописывается той же записью (тот же uuid).
 // CVG_FAKE_SLOW_ACCEPT=1 — поле очищается через 1200 мс после Enter. CVG_FAKE_SEED — начальный журнал (копируется при старте).
 import { execFileSync } from 'node:child_process';
@@ -11,6 +11,7 @@ import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from '
 import { join } from 'node:path';
 
 const PASTE_MS = 250;
+const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 // Линии во всю ширину терминала, как у настоящего Claude Code (в узком окне телефона не переносятся)
 const rule = () => '─'.repeat(Math.max(10, process.stdout.columns || 60));
 const OPTIONS = ['Да', 'Да и не спрашивать', 'Нет'];
@@ -25,6 +26,7 @@ let images = 0;
 let history = [];
 let status = null;
 let menu = null; // { selected }
+let multi = null; // { selected (OPTIONS.length — «Submit»), checked: Set }
 let busyUntil = 0;
 let processingUntil = 0;
 let enters = 0;
@@ -60,7 +62,12 @@ function record(type, content, uuid = randomUUID()) {
 function draw() {
   let out = '\x1b[H\x1b[2J';
   for (const h of history.slice(-10)) out += `${h}\r\n`;
-  if (menu) {
+  if (multi) {
+    // Как Claude Code 2.1.308: чекбоксы, «Submit» без номера, вкладка вопроса сверху
+    out += `${rule()}\r\n←  ☐ Цвета  ✔ Submit  →\r\nКакие цвета?\r\n`;
+    OPTIONS.forEach((o, i) => (out += `${i === multi.selected ? '❯' : ' '} ${i + 1}. [${multi.checked.has(i) ? '✔' : ' '}] ${o}\r\n`));
+    out += `${multi.selected === OPTIONS.length ? '❯' : ' '}    Submit\r\n${rule()}\r\nEnter to select · ↑/↓ to navigate · Esc to cancel\r\n`;
+  } else if (menu) {
     out += `${rule()}\r\n Выбор\r\n Что сделать?\r\n`;
     OPTIONS.forEach((o, i) => (out += ` ${i === menu.selected ? '❯' : ' '} ${i + 1}. ${o}\r\n`));
     out += ' Enter to confirm · Esc to cancel\r\n';
@@ -79,7 +86,8 @@ function submit() {
   if (!text) return;
   const shown = pasted ? `${images ? `[Image #${images}]` : ''}${text.split('\n')[0]}` : field;
   history.push(`› ${shown}`);
-  record('user', text);
+  // Как настоящий Claude Code: путь к картинке → «[Image #N]» и блок image с данными
+  record('user', images ? [{ type: 'text', text: `[Image #${images}]${text}` }, ...Array.from({ length: images }, () => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG_1PX } }))] : text);
   field = '';
   pasted = null;
   images = 0;
@@ -90,6 +98,9 @@ function submit() {
     const head = `Начало растущего ответа. ${'Слова идут одно за другим. '.repeat(6)}`;
     record('assistant', head, id);
     setTimeout(() => record('assistant', `${head}Хвост растущего ответа.`, id), 300);
+  } else if (text.trim() === 'menu-multi') {
+    multi = { selected: 0, checked: new Set() };
+    writeSession('waiting');
   } else if (text.trim() === 'menu') {
     menu = { selected: 0 };
     writeSession('waiting');
@@ -136,6 +147,24 @@ function finishPaste(text) {
 
 function onKey(k) {
   if (Date.now() < processingUntil) return; // вставка ещё обрабатывается — ввод теряется
+  if (multi) {
+    if (k === '\x1b[A') multi.selected = Math.max(0, multi.selected - 1);
+    else if (k === '\x1b[B') multi.selected = Math.min(OPTIONS.length, multi.selected + 1);
+    else if ((k === ' ' || k === '\r') && multi.selected < OPTIONS.length) {
+      if (multi.checked.has(multi.selected)) multi.checked.delete(multi.selected);
+      else multi.checked.add(multi.selected);
+    } else if (k === '\r') {
+      const picked = [...multi.checked].sort().map((i) => OPTIONS[i]).join(', ');
+      multi = null;
+      history.push(`● выбраны: ${picked}`);
+      record('assistant', `выбраны: ${picked}`);
+      writeSession('idle');
+    } else if (k === '\x1b') {
+      multi = null;
+      writeSession('idle');
+    }
+    return draw();
+  }
   if (menu) {
     if (k === '\x1b[A') menu.selected = Math.max(0, menu.selected - 1);
     else if (k === '\x1b[B') menu.selected = Math.min(OPTIONS.length - 1, menu.selected + 1);

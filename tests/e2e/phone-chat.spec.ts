@@ -98,10 +98,10 @@ test('карточка меню: варианты не ниже 48 px, каса�
   try {
     await composer(page).fill('menu');
     await page.getByRole('button', { name: 'Отправить' }).tap();
-    const options = card(page).getByRole('option');
+    const options = card(page).getByRole('radio');
     await expect(options).toHaveCount(3, { timeout: 10_000 });
     for (const box of await Promise.all((await options.all()).map((o) => o.boundingBox()))) expect(box!.height).toBeGreaterThanOrEqual(48);
-    await card(page).getByRole('option', { name: /Да и не спрашивать/ }).tap();
+    await card(page).getByRole('radio', { name: /Да и не спрашивать/ }).tap();
     await expect(card(page)).toBeHidden({ timeout: 5000 });
     await expect(feed(page).getByText('выбран 2')).toBeVisible({ timeout: 10_000 });
   } finally {
@@ -127,14 +127,14 @@ test('маленький экран с клавиатурой (360×640 → 360�
   try {
     await composer(page).fill('menu');
     await page.getByRole('button', { name: 'Отправить' }).tap();
-    await expect(card(page).getByRole('option')).toHaveCount(3, { timeout: 10_000 });
+    await expect(card(page).getByRole('radio')).toHaveCount(3, { timeout: 10_000 });
     // Экранная клавиатура забирает низ окна (Keyboard resize: native)
     await page.setViewportSize({ width: 360, height: 360 });
     // Терминал спрятан под лентой — его размер не меняется, меню Claude Code не перерисовывается в несколько строк
     await page.waitForTimeout(1500);
-    await expect(card(page).getByRole('option')).toHaveCount(3);
+    await expect(card(page).getByRole('radio')).toHaveCount(3);
     for (let i = 0; i < 3; i++) {
-      const o = card(page).getByRole('option').nth(i);
+      const o = card(page).getByRole('radio').nth(i);
       await o.scrollIntoViewIfNeeded();
       await expect(o).toBeInViewport({ ratio: 1 });
     }
@@ -146,12 +146,12 @@ test('маленький экран с клавиатурой (360×640 → 360�
   }
 });
 
-test('📎 — системный выбор картинки (галерея, камера, файлы), картинка уходит путём на ВМ', async () => {
+test('📎 — системный выбор файла (галерея, камера, файлы), картинка уходит путём на ВМ', async () => {
   const { app, page } = await openCat();
   try {
     const input = page.locator('.composer input[type="file"]');
-    // Без capture — Android предлагает и галерею, и камеру, и файлы
-    await expect(input).toHaveAttribute('accept', 'image/*');
+    // Без accept и capture — системный выбор любых файлов (галерея и камера в нём остаются)
+    expect(await input.getAttribute('accept')).toBeNull();
     expect(await input.getAttribute('capture')).toBeNull();
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
     await input.setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });

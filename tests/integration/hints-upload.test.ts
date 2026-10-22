@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -118,18 +118,53 @@ describe.skipIf(!hasTestKey)('подсказки и загрузка карти�
   it('картинка загружается по SFTP с прогрессом', async () => {
     const progress: UploadProgress[] = [];
     upload.on('progress', (p: UploadProgress) => progress.push(p));
-    const r = await upload.image('img-1', new Uint8Array(PNG), 'png');
+    const r = await upload.file('img-1', new Uint8Array(PNG), 'image.png');
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     uploaded.push(r.data.remotePath);
-    expect(r.data.remotePath).toMatch(new RegExp(`^${UPLOADS}/\\d{8}-\\d{6}-[0-9a-f]{6}\\.png$`));
+    expect(r.data.remotePath).toMatch(new RegExp(`^${UPLOADS}/\\d{8}-\\d{6}-[0-9a-f]{6}-image\\.png$`));
     expect(statSync(r.data.remotePath).size).toBe(PNG.length);
     expect(progress.at(-1)).toEqual({ id: 'img-1', sent: PNG.length, total: PNG.length });
   });
 
-  it('больше 20 МБ — UPLOAD_TOO_BIG без загрузки', async () => {
-    const r = await upload.image('big', new Uint8Array(20 * 1024 * 1024 + 1), 'png');
-    expect(r).toMatchObject({ ok: false, error: { code: 'UPLOAD_TOO_BIG' } });
+  it('любой файл: исходное имя без пробелов, права 600', async () => {
+    const r = await upload.file('f-1', new TextEncoder().encode('# заметка'), 'мои notes.md');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    uploaded.push(r.data.remotePath);
+    expect(r.data.remotePath).toMatch(new RegExp(`^${UPLOADS}/\\d{8}-\\d{6}-[0-9a-f]{6}-мои_notes\\.md$`));
+    expect(statSync(r.data.remotePath).mode & 0o777).toBe(0o600);
+    expect(readFileSync(r.data.remotePath, 'utf8')).toBe('# заметка');
+  });
+
+  it('больше 50 МБ — UPLOAD_TOO_BIG без загрузки', async () => {
+    const r = await upload.file('big', new Uint8Array(50 * 1024 * 1024 + 1), 'big.bin');
+    expect(r).toMatchObject({ ok: false, error: { code: 'UPLOAD_TOO_BIG', message: 'Файл больше 50 МБ' } });
+  });
+
+  it('read: начало файла, полный размер, обрезка по maxBytes', async () => {
+    const w = await upload.file('r-1', new TextEncoder().encode('0123456789'), 'r.txt');
+    expect(w.ok).toBe(true);
+    if (!w.ok) return;
+    uploaded.push(w.data.remotePath);
+    const all = await upload.read(w.data.remotePath, 100);
+    expect(all.ok && new TextDecoder().decode(all.data.bytes)).toBe('0123456789');
+    expect(all.ok && all.data).toMatchObject({ size: 10, truncated: false });
+    const head = await upload.read(w.data.remotePath, 4);
+    expect(head.ok && new TextDecoder().decode(head.data.bytes)).toBe('0123');
+    expect(head.ok && head.data).toMatchObject({ size: 10, truncated: true });
+  });
+
+  it('read: путь вне папки загрузок и ссылка наружу — BAD_PATH, удалённый — NOT_FOUND', async () => {
+    mkdirSync(UPLOADS, { recursive: true });
+    expect(await upload.read(`${UPLOADS}/../../../.ssh/authorized_keys`, 100)).toMatchObject({ ok: false, error: { code: 'BAD_PATH' } });
+    expect(await upload.read('/etc/hostname', 100)).toMatchObject({ ok: false, error: { code: 'BAD_PATH' } });
+    const link = join(UPLOADS, 'cvg-test-link.txt');
+    rmSync(link, { force: true });
+    symlinkSync('/etc/hostname', link);
+    uploaded.push(link);
+    expect(await upload.read(link, 100)).toMatchObject({ ok: false, error: { code: 'BAD_PATH' } });
+    expect(await upload.read(join(UPLOADS, 'cvg-test-нет-такого.txt'), 100)).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
   });
 
   it('чистка удаляет файлы старше 7 дней', async () => {

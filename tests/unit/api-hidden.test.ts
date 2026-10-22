@@ -27,7 +27,8 @@ function fakeSsh() {
   const ev = new Emitter();
   let connected = false;
   const execs: string[] = [];
-  const pty: Channel = { on: () => {}, stderr: { on: () => {} }, write: () => {}, end: () => {}, close: () => {}, setWindow: () => {} };
+  const writes: string[] = [];
+  const pty: Channel = { on: () => {}, stderr: { on: () => {} }, write: (d) => void writes.push(d), end: () => {}, close: () => {}, setWindow: () => {} };
   const ssh = {
     get connected() {
       return connected;
@@ -54,7 +55,7 @@ function fakeSsh() {
     answerHostKey: () => {},
     onPreflight: () => () => {},
   };
-  return { ssh: ssh as unknown as ConnectableTransport, execs };
+  return { ssh: ssh as unknown as ConnectableTransport, execs, writes };
 }
 
 afterEach(() => {
@@ -65,7 +66,7 @@ afterEach(() => {
 /** Подключённое приложение с открытой сессией; setVisible — свернуть и вернуть. */
 async function connected(extra: Partial<Platform> = {}) {
   vi.useFakeTimers();
-  const { ssh, execs } = fakeSsh();
+  const { ssh, execs, writes } = fakeSsh();
   const prefs = fakePrefs({ config: JSON.stringify(cfg) });
   const secrets = fakeSecrets();
   secrets.store.key = 'KEY';
@@ -74,7 +75,7 @@ async function connected(extra: Partial<Platform> = {}) {
   expect((await api.connection.connect()).ok).toBe(true);
   expect((await api.term.open('s1', 80, 24)).ok).toBe(true);
   await vi.advanceTimersByTimeAsync(1000);
-  return { api, execs, prefs };
+  return { api, execs, prefs, writes };
 }
 
 async function expectPausedWhileHidden(setVisible: (v: boolean) => void, execs: string[]) {
@@ -124,5 +125,39 @@ it('Android: приложение свернули — раскладка зап
   v.notify(false);
   await vi.advanceTimersByTimeAsync(0);
   expect(prefs.data.get('layout')).toContain('s1');
+  await api.connection.disconnect();
+});
+
+it('Android: вернулись в приложение — «фокус получен» в терминал: окно tmux под размер телефона', async () => {
+  const { v, onVisibility } = visibility();
+  const { api, writes } = await connected({ onVisibility });
+  v.notify(false);
+  await vi.advanceTimersByTimeAsync(1000);
+  writes.length = 0;
+  v.notify(true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(writes).toEqual(['\x1b[I']);
+  await api.connection.disconnect();
+});
+
+const release = (tag: string) => ({ tag_name: tag, html_url: `https://github.com/Liotto1337/claude-vm-gui-android/releases/tag/${tag}` });
+
+it('Android: обновления — релизы claude-vm-gui-android, проверка только пока приложение на экране; скрытая версия в настройках', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => release('v9.9.9') }));
+  vi.stubGlobal('fetch', fetch);
+  const { v, onVisibility } = visibility();
+  const { api, prefs } = await connected({ onVisibility });
+  v.notify(false);
+  fetch.mockClear();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(fetch).not.toHaveBeenCalled();
+  v.notify(true);
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(fetch).toHaveBeenCalledWith('https://api.github.com/repos/Liotto1337/claude-vm-gui-android/releases/latest', expect.anything());
+  expect(await api.updates.get()).toEqual({ version: '9.9.9', url: release('v9.9.9').html_url });
+  expect(await api.updates.dismissed()).toBeNull();
+  await api.updates.dismiss('9.9.9');
+  expect(await api.updates.dismissed()).toBe('9.9.9');
+  expect(prefs.data.get('dismissedUpdate')).toBe('9.9.9');
   await api.connection.disconnect();
 });

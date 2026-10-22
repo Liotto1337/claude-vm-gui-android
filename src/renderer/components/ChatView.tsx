@@ -1,9 +1,12 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { displayName, isImageName } from '@shared/upload-name';
 import { api } from '../api';
 import { FOLLOW_START, followOnScroll, followUserUp, type Follow } from '../follow';
 import { typingDone, useAppState } from '../state';
 import { ChatItemView } from './ChatItemView';
-import { IconImage } from './icons';
+import { MenuCard } from './MenuCard';
+import type { MenuAnswer } from '../menu-history';
+import { IconFile, IconImage } from './icons';
 import { Spinner } from './Spinner';
 
 const UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home']);
@@ -14,6 +17,18 @@ export function ChatView({ session }: { session: string }) {
   const items = chat?.items ?? [];
   const status = chat?.screen?.kind === 'prompt' ? chat.screen.status : null;
   const working = status !== null || (!!chat?.busy && chat.screen?.kind !== 'menu');
+  const menu = chat?.screen?.kind === 'menu' ? chat.screen.menu : null;
+  // Итоги ответов на меню — на месте карточки: после элемента, который был последним, когда меню открылось
+  const { answersAfter, answersLost } = useMemo(() => {
+    const ids = new Set(items.map((i) => i.id));
+    const after = new Map<string, MenuAnswer[]>();
+    const lost: MenuAnswer[] = [];
+    for (const a of chat?.answers ?? []) {
+      if (a.after !== null && ids.has(a.after)) after.set(a.after, [...(after.get(a.after) ?? []), a]);
+      else lost.push(a);
+    }
+    return { answersAfter: after, answersLost: lost };
+  }, [items, chat?.answers]);
   const pending = chat?.pending ?? [];
   const typing = chat?.typing ?? {};
   // Пока ответ «печатается», лента следит за низом
@@ -22,6 +37,7 @@ export function ChatView({ session }: { session: string }) {
   // Слежение за низом; пользователь сам ушёл вверх (колесо, клавиши) — только когда докрутит до самого низа
   const follow = useRef<Follow>(FOLLOW_START);
   const sentIds = useRef(new Set(pending.map((p) => p.id)));
+  const hadMenu = useRef(false);
   const restore = useRef<number | null>(null);
   const [behind, setBehind] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,8 +51,9 @@ export function ChatView({ session }: { session: string }) {
       restore.current = null;
       return;
     }
-    // Своё новое сообщение — вниз, где бы ни была лента (как на claude.ai)
-    const fresh = pending.some((p) => !sentIds.current.has(p.id));
+    // Своё новое сообщение и вопрос Claude Code — вниз, где бы ни была лента (как на claude.ai)
+    const fresh = pending.some((p) => !sentIds.current.has(p.id)) || (menu !== null && !hadMenu.current);
+    hadMenu.current = menu !== null;
     sentIds.current = new Set(pending.map((p) => p.id));
     if (fresh) {
       follow.current = FOLLOW_START;
@@ -44,7 +61,7 @@ export function ChatView({ session }: { session: string }) {
     }
     if (follow.current.atBottom) el.scrollTop = el.scrollHeight;
     else setBehind(true);
-  }, [items, status, pending, tick]);
+  }, [items, status, pending, tick, menu, chat?.answers]);
 
   // Содержимое растёт само («печать» ответа) — держим низ, если пользователь внизу
   const inner = useRef<HTMLDivElement>(null);
@@ -98,27 +115,32 @@ export function ChatView({ session }: { session: string }) {
         ) : null}
         {items.length === 0 && pending.length === 0 && !working ? <p className="caption chat-empty">Переписка пока пустая</p> : null}
         {items.map((i) => (
-          <ChatItemView
-            key={i.id}
-            item={i}
-            typingSince={typing[i.id]}
-            onTyped={typing[i.id] !== undefined ? () => {
-              typingDone(session, i.id);
-              setTick((t) => t + 1);
-            } : undefined}
-          />
+          <Fragment key={i.id}>
+            <ChatItemView
+              item={i}
+              typingSince={typing[i.id]}
+              onTyped={typing[i.id] !== undefined ? () => {
+                typingDone(session, i.id);
+                setTick((t) => t + 1);
+              } : undefined}
+            />
+            {answersAfter.get(i.id)?.map((a) => <ChatItemView key={a.id} item={{ kind: 'note', id: a.id, text: a.text }} />)}
+          </Fragment>
         ))}
+        {/* Якорь итога не в загруженной части журнала (или журнал был пуст) — в конце */}
+        {answersLost.map((a) => <ChatItemView key={a.id} item={{ kind: 'note', id: a.id, text: a.text }} />)}
         {pending.map((p) => (
           <div key={p.id} className={p.state === 'sending' ? 'bubble is-sending' : 'bubble'}>
-            {Array.from({ length: p.images }, (_, k) => (
-              <span key={k} className="img-chip">
-                <IconImage />
-                Картинка
+            {p.files.map((f) => (
+              <span key={f} className="img-chip">
+                {isImageName(f) ? <IconImage /> : <IconFile />}
+                {displayName(f)}
               </span>
             ))}
             {p.text ? <span className="bubble-text">{p.text}</span> : null}
           </div>
         ))}
+        {menu ? <MenuCard session={session} menu={menu} /> : null}
         {working ? (
           <div className="chat-status" role="status">
             <Spinner /> {status ?? 'Claude работает…'}

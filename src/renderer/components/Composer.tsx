@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { detectTrigger, filterHints, type Trigger } from '@shared/hints';
-import type { HintCommand, Hints, ImageExt, ModelInfo, ParsedMenu, TmuxSession } from '@shared/ipc';
+import type { HintCommand, Hints, ModelInfo, ParsedMenu, TmuxSession } from '@shared/ipc';
+import { isImageName, MAX_FILE_BYTES } from '@shared/upload-name';
 import { api } from '../api';
 import { addPending, dropPending, markPendingSent, refreshSessions, rememberChoice, useAppState } from '../state';
-import { AttachmentChip, type Attachment } from './AttachmentChip';
+import { revoke, type Attachment } from '../attachments';
+import { getDraft, restoreFailed, setDraft, updateDraft, useDraft } from '../drafts';
+import { AttachmentChip } from './AttachmentChip';
 import { BottomSheet } from './BottomSheet';
 import { ChoiceList, ChoiceMenu, type Choice } from './ChoiceMenu';
 import { HintPopup, type HintItem } from './HintPopup';
 import { IconArrowUp, IconChevron, IconClip } from './icons';
-import { MenuCard } from './MenuCard';
 import { usePhone } from '../use-phone';
 
-const MIME_EXT: Record<string, ImageExt> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
-const MAX_BYTES = 20 * 1024 * 1024;
 const FALLBACK_MODELS: ModelInfo[] = [
   { value: 'default', displayName: 'Default', description: '', efforts: [] },
   { value: 'opus', displayName: 'Opus', description: '', efforts: [] },
@@ -21,7 +21,7 @@ const FALLBACK_MODELS: ModelInfo[] = [
 const FALLBACK_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /**
- * Поле ввода. menu — открытое меню Claude Code (карточка над полем, поле неактивно);
+ * Поле ввода. menu — открытое меню Claude Code (карточка в ленте, поле неактивно);
  * working — claude работает (кнопка «Остановить»), chatMode — показана лента, а не терминал.
  */
 export function Composer({ session, menu = null, working = false, chatMode = false }: { session: TmuxSession; menu?: ParsedMenu | null; working?: boolean; chatMode?: boolean }) {
@@ -31,13 +31,15 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
   const phone = usePhone();
   // Телефон: модель и effort — одной кнопкой, выбор в нижнем листе
   const [sheet, setSheet] = useState(false);
-  const [text, setText] = useState('');
+  // Текст и вложения — в черновике сессии: переживают скрытие поля и возвращаются при ошибке отправки
+  const { text, attachments } = useDraft(session.name);
+  const setText = (t: string) => updateDraft(session.name, (d) => ({ ...d, text: t }));
+  const setAttachments = (fn: (l: Attachment[]) => Attachment[]) => updateDraft(session.name, (d) => ({ ...d, attachments: fn(d.attachments) }));
   const [caret, setCaret] = useState(0);
   const [hints, setHints] = useState<Hints | null>(null);
   const [files, setFiles] = useState<string[] | null>(null);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<number | null>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sendError, setSendError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   // Карточка меню закрылась (поле снова доступно) и фокус никому не достался — обратно в поле
@@ -126,27 +128,31 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
     if (!canSend || sending.current) return;
     sending.current = true;
     setBusy(true);
-    // Сообщение сразу в ленте (темнее), пока идёт отправка
-    const pendingId = addPending(session.name, text.trim(), ready.length);
-    const r = await api.term.send(text, ready.map((a) => a.remotePath!)).finally(() => {
+    // Сообщение сразу в ленте (темнее), а поле — сразу пустое: можно набирать следующее, пока идёт отправка
+    const sent = getDraft(session.name);
+    const pendingId = addPending(session.name, text.trim(), ready.map((a) => a.remotePath!));
+    setDraft(session.name, { text: '', attachments: [] });
+    setTextAndCaret('', 0);
+    const r = await api.term.send(sent.text, ready.map((a) => a.remotePath!)).finally(() => {
       sending.current = false;
       setBusy(false);
     });
     if (!r.ok) {
       dropPending(session.name, pendingId);
       setSendError(r.error.message);
+      restoreFailed(session.name, sent);
       return;
     }
     markPendingSent(session.name, pendingId);
     setSendError(null);
-    for (const a of attachments) URL.revokeObjectURL(a.url);
-    setAttachments([]);
-    setTextAndCaret('', 0);
+    for (const a of sent.attachments) revoke(a);
   };
 
   const upload = async (a: Attachment) => {
+    // Слишком большой файл не прочитан — повторять нечего
+    if (a.size > MAX_FILE_BYTES) return;
     setAttachments((list) => list.map((x) => (x.id === a.id ? { ...x, status: 'uploading', percent: 0, error: undefined } : x)));
-    const r = await api.upload.image(a.id, a.bytes, a.ext);
+    const r = await api.upload.file(a.id, a.bytes, a.name);
     setAttachments((list) =>
       list.map((x) =>
         x.id !== a.id ? x : r.ok ? { ...x, status: 'done', percent: 100, remotePath: r.data.remotePath } : { ...x, status: 'error', error: r.error.message },
@@ -156,38 +162,41 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
 
   const addFiles = async (list: File[]) => {
     for (const f of list) {
-      const ext = MIME_EXT[f.type];
-      if (!ext) continue;
-      const id = `img-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-      const bytes = new Uint8Array(await f.arrayBuffer());
+      const id = `file-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      // Больше предела — не читаем в память: файл может быть огромным
+      const big = f.size > MAX_FILE_BYTES;
+      const bytes = big ? new Uint8Array(0) : new Uint8Array(await f.arrayBuffer());
+      const name = f.name || 'file';
+      const image = isImageName(name) && f.type.startsWith('image/');
       const a: Attachment = {
         id,
-        name: f.name && f.name !== 'image.png' ? f.name : 'Вставленная картинка',
-        url: URL.createObjectURL(f),
+        name,
+        url: image ? URL.createObjectURL(f) : '',
         bytes,
-        ext,
-        size: bytes.byteLength,
-        status: bytes.byteLength > MAX_BYTES ? 'error' : 'uploading',
+        image,
+        size: f.size,
+        status: big ? 'error' : 'uploading',
         percent: 0,
-        error: bytes.byteLength > MAX_BYTES ? 'больше 20 МБ' : undefined,
+        error: big ? 'больше 50 МБ' : undefined,
       };
       setAttachments((l) => [...l, a]);
       if (a.status === 'uploading') void upload(a);
     }
   };
 
+  // Файлы из буфера (картинка или файлы, скопированные в проводнике); просто текст вставляется как обычно
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const images = [...e.clipboardData.items].filter((i) => i.kind === 'file' && MIME_EXT[i.type]).map((i) => i.getAsFile()).filter((f): f is File => f !== null);
-    if (images.length === 0) return;
+    const files = [...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter((f): f is File => f !== null);
+    if (files.length === 0) return;
     e.preventDefault();
-    void addFiles(images);
+    void addFiles(files);
   };
 
   const onDrop = (e: DragEvent) => {
-    const images = [...e.dataTransfer.files].filter((f) => MIME_EXT[f.type]);
-    if (images.length === 0) return;
+    const files = [...e.dataTransfer.files];
+    if (files.length === 0) return;
     e.preventDefault();
-    void addFiles(images);
+    void addFiles(files);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -233,13 +242,6 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
           </button>
         </div>
       ) : null}
-      {/* Карточка всплывает над полем, не меняя раскладку: иначе терминал под лентой стал бы ниже
-          и Claude Code перерисовал бы меню, обрезав его начало */}
-      {menu ? (
-        <div className="menu-layer">
-          <MenuCard menu={menu} />
-        </div>
-      ) : null}
       <div className="composer-anchor">
         <HintPopup items={items} active={active} onPick={pick} />
         <div className="composer">
@@ -251,7 +253,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
                   a={a}
                   onRetry={() => void upload(a)}
                   onRemove={() => {
-                    URL.revokeObjectURL(a.url);
+                    revoke(a);
                     setAttachments((l) => l.filter((x) => x.id !== a.id));
                   }}
                 />
@@ -265,7 +267,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
             rows={2}
             value={text}
             disabled={menuOpen}
-            placeholder={menuOpen ? 'Сначала ответьте на вопрос выше' : 'Напишите сообщение…'}
+            placeholder={menuOpen ? 'Сначала ответьте на вопрос в ленте' : 'Напишите сообщение…'}
             onChange={(e) => {
               setText(e.target.value);
               setCaret(e.target.selectionStart);
@@ -276,7 +278,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
             onPaste={onPaste}
           />
           <div className="composer-bar">
-            <button type="button" className="icon-btn" aria-label="Прикрепить картинку" onClick={() => fileInput.current?.click()}>
+            <button type="button" className="icon-btn" aria-label="Прикрепить файл" onClick={() => fileInput.current?.click()}>
               <IconClip />
             </button>
             <input
@@ -284,8 +286,6 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
               type="file"
               hidden
               multiple
-              // Телефон: image/* без capture — Android предлагает галерею, камеру и файлы (неподходящий формат отклонит загрузка)
-              accept={phone ? 'image/*' : 'image/png,image/jpeg,image/gif,image/webp'}
               onChange={(e) => {
                 void addFiles([...(e.target.files ?? [])]);
                 e.target.value = '';
@@ -327,7 +327,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
         </div>
       </div>
       {sendError ? <p className="form-error" role="alert">{sendError}</p> : null}
-      {phone ? null : <div className="composer-help">Enter — отправить · Shift+Enter — новая строка · Ctrl+V или перетаскивание — картинка</div>}
+      {phone ? null : <div className="composer-help">Enter — отправить · Shift+Enter — новая строка · Ctrl+V или перетаскивание — файл</div>}
       <BottomSheet open={sheet} title="Модель и effort" onClose={() => setSheet(false)}>
         <div role="menu" aria-label="Модель" className="sheet-section">
           <div className="caption choice-title">Модель · отправит /model</div>

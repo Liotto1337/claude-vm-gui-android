@@ -139,7 +139,7 @@
 .session-box { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .session-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0; }
 .session-list > li { flex: none; position: relative; box-sizing: border-box; }
-.row-session { height: 52px; padding: 1px 0; }
+.row-session { height: 56px; padding: 1px 0; }
 .session-list > li[hidden] { display: none; }
 .row-session.in-group { padding-left: 14px; }
 .row-session.in-group .session-item { border-left: 0.5px solid var(--border); border-radius: 0 8px 8px 0; }
@@ -174,8 +174,8 @@
 .session-item[aria-current='page'] { background: var(--hover); }
 .session-item[aria-current='page'] .session-name { font-weight: 600; }
 .session-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.session-name { flex: 1; }
-.session-cwd { font-size: 12px; color: var(--text-2); padding-left: 14px; }
+.session-name { flex: 1; line-height: 1.35; }
+.session-cwd { font-size: 12px; line-height: 1.35; color: var(--text-2); padding-left: 14px; }
 .tag { font-size: 11px; color: var(--text-2); border: 0.5px solid var(--border-strong); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
 .settings-btn { margin-top: auto; }
 
@@ -192,6 +192,11 @@
 
 .banner { display: flex; align-items: center; gap: 12px; margin: 12px 24px 0; padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border: 0.5px solid var(--border); font-size: 13px; }
 .banner-error { background: color-mix(in srgb, var(--danger) 12%, var(--panel)); }
+/* Обновление: самый яркий цвет темы (глина), тёмный текст — белый на глине читается плохо */
+.banner-update { padding: 0; background: var(--accent); border-color: transparent; color: #141413; font-weight: 600; }
+.banner-update-link { flex: 1; padding: 10px 14px; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.banner-close { padding: 10px 14px; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
+.banner-update-link:focus-visible, .banner-close:focus-visible { outline: 2px solid #141413; outline-offset: -4px; border-radius: 8px; }
 
 .popup { list-style: none; margin: 0; padding: 6px; background: var(--panel); border: 0.5px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 1px; }
 .popup-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
@@ -249,6 +254,16 @@
 .chat-status { color: var(--accent); font-size: 14px; }
 .bubble { transition: background-color 0.35s ease; align-self: flex-end; max-width: 75%; background: var(--bubble); border-radius: 16px; padding: 10px 14px; line-height: 1.5; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-image-btn { flex-basis: 100%; padding: 0; border: none; background: none; cursor: zoom-in; line-height: 0; text-align: left; }
+.chat-image { display: block; max-width: 100%; max-height: 360px; object-fit: contain; border-radius: 10px; }
+.chat-image-placeholder { flex-basis: 100%; height: 360px; max-height: 360px; border-radius: 10px; background: var(--panel); }
+.file-att { flex-basis: 100%; min-width: 0; }
+.file-row { cursor: default; }
+button.file-row { cursor: pointer; }
+.file-name { flex: 1; min-width: 0; }
+.lightbox { padding: 16px; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; cursor: default; }
+.lightbox-close { position: absolute; top: 12px; right: 12px; color: #fff; background: rgba(0, 0, 0, 0.45); border-radius: 50%; width: 36px; height: 36px; }
 .img-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 6px; background: var(--panel); border: 0.5px solid var(--border); font-size: 12px; color: var(--text-2); }
 .thinking, .note { padding: 0 4px; white-space: pre-wrap; }
 .md { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -287,9 +302,18 @@
 .menu-context.mono { color: var(--text); }
 .menu-options { display: flex; flex-direction: column; gap: 2px; }
 .menu-option { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
-.menu-option:hover, .menu-option[aria-selected='true'] { background: var(--hover); }
-.menu-num { flex: none; width: 22px; height: 22px; box-sizing: border-box; border-radius: 6px; border: 0.5px solid var(--border-strong); color: var(--text-2); font-size: 12px; display: flex; align-items: center; justify-content: center; }
-.menu-num-on { background: var(--btn-dark-bg); color: var(--btn-dark-text); border-color: transparent; }
+.menu-option:hover, .menu-option.is-cursor { background: var(--hover); }
+.menu-radio, .menu-check { flex: none; width: 18px; height: 18px; box-sizing: border-box; border: 1.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; }
+.menu-radio { border-radius: 50%; }
+.menu-radio.is-on { border-color: var(--btn-dark-bg); }
+.menu-radio.is-on::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--btn-dark-bg); }
+.menu-check { border-radius: 5px; }
+.menu-check.is-on { background: var(--btn-dark-bg); border-color: transparent; }
+.menu-check.is-on::after { content: ''; width: 5px; height: 9px; margin-top: -2px; border: solid var(--btn-dark-text); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.menu-own { flex: 1; min-width: 0; }
+.menu-axis { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 13px; }
+.menu-foot { display: flex; align-items: center; gap: 12px; }
+.menu-foot .menu-hint { flex: 1; }
 .menu-label { flex: 1; min-width: 0; }
 .menu-notes, .menu-hint { padding: 0 4px; }
 .menu-hint { text-align: right; }
@@ -332,8 +356,6 @@
 .procs thead th { background: var(--sidebar); }
 .procs th:not(:first-child), .procs td:not(:first-child) { text-align: right; }
 
-.menu-layer { position: absolute; left: 24px; right: 24px; bottom: 100%; z-index: 8; display: flex; justify-content: center; padding-bottom: 4px; pointer-events: none; }
-.menu-layer .menu-card { pointer-events: auto; max-height: min(60vh, 520px); overflow-y: auto; }
 
 /* ── Последние штрихи (0.2.1) ── */
 .bubble.is-sending { background: color-mix(in srgb, var(--bubble) 86%, #000); }

@@ -14,7 +14,7 @@ import { usePhone } from '../use-phone';
 import { applyDrop, dropEdge as edgeAt, groupById, groupIndex, rowKey, type Drop } from '../drop';
 
 /** Высоты строк — как в app.css (.row-*): по ним список делится на страницы. */
-export const ROW_HEIGHTS = { section: 28, divider: 17, group: 34, session: 52 } as const;
+export const ROW_HEIGHTS = { section: 28, divider: 17, group: 34, session: 56 } as const;
 const PAGER_H = 40;
 const PAGE_FLIP_MS = 600;
 const DND = 'application/x-cvg';

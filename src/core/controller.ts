@@ -1,4 +1,4 @@
-import { fail, ok, type ImageExt, type MenuKey, type Result, type VmConfig } from '@shared/ipc';
+import { fail, ok, type MenuKey, type Result, type VmConfig } from '@shared/ipc';
 import { transcriptPath } from '@shared/claude-session';
 import { plural } from '@shared/plural';
 import { HintsService } from './hints';
@@ -79,12 +79,14 @@ export class AppController {
   metricsSetActive = (fast: boolean) => this.s?.metrics.setActive(fast === true);
   metricsInfo = () => this.need((s) => s.metrics.info());
   chatKey = (k: MenuKey) => this.need((s) => s.term.key(k));
+  chatTypeText = (t: string) => this.need((s) => s.term.typeText(t));
   chatLoadEarlier = () => this.need((s) => s.transcript.loadEarlier());
 
   hintsGet = (cwd: string) => this.need((s) => s.hints.get(cwd));
   hintsFiles = (cwd: string) => this.need((s) => s.hints.files(cwd));
   hintsDirs = (partial: string) => this.need((s) => s.hints.dirs(partial));
-  uploadImage = (id: string, bytes: Uint8Array, ext: ImageExt) => this.need((s) => s.upload.image(id, bytes, ext));
+  uploadFile = (id: string, bytes: Uint8Array, name: string) => this.need((s) => s.upload.file(id, bytes, name));
+  uploadRead = (path: string, maxBytes: number) => this.need((s) => s.upload.read(path, maxBytes));
 
   private async need<T>(fn: (s: Services) => Promise<Result<T>>): Promise<Result<T>> {
     if (!this.s || !this.s.conn.connected) return fail('NOT_CONNECTED', 'Нет подключения к ВМ');
@@ -121,6 +123,8 @@ export class AppController {
     s.stopPolling = this.pollSessions(s.tmux);
     s.metrics.start();
     if (s.term.current) s.watch.start(s.term.current);
+    // Вернулись в приложение — окно tmux под размер этого экрана (а не другого устройства с той же сессией)
+    s.term.activate();
   }
 
   private pollSessions(tmux: TmuxService): () => void {

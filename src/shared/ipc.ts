@@ -20,7 +20,9 @@ export type ErrorCode =
   | 'HINTS_FAILED'
   | 'CONFIG_INVALID'
   | 'SEND_NOT_CONFIRMED'
-  | 'NO_TRANSCRIPT';
+  | 'NO_TRANSCRIPT'
+  | 'NOT_FOUND'
+  | 'BAD_PATH';
 
 export interface VmConfig {
   host: string;
@@ -99,8 +101,6 @@ export interface UploadProgress {
   total: number;
 }
 
-export type ImageExt = 'png' | 'jpg' | 'gif' | 'webp';
-
 /** Замер параметров ВМ (панель «Сервер»). Байты и байт/с; null — нет данных. */
 export interface MetricsSample {
   t: number;
@@ -115,9 +115,11 @@ export interface MetricsSample {
 }
 export interface SystemInfo { os: string; kernel: string; cores: number; claudeVersion: string | null }
 
-/** Элемент ленты переписки (из журнала Claude Code). */
+/** Картинка сообщения из журнала (блок image): base64; без данных — пустые строки. */
+export interface ChatImage { mediaType: string; data: string }
+/** Элемент ленты переписки (из журнала Claude Code). files — пути вложений из папки загрузок на ВМ. */
 export type ChatItem =
-  | { kind: 'user'; id: string; text: string; images: number }
+  | { kind: 'user'; id: string; text: string; images: ChatImage[]; files: string[] }
   | { kind: 'assistant'; id: string; text: string }
   | { kind: 'thinking'; id: string }
   | { kind: 'note'; id: string; text: string }
@@ -135,10 +137,18 @@ export type LayoutItem =
   | { kind: 'group'; id: string; name: string; pinned?: boolean; collapsed?: boolean; sessions: { name: string; pinned?: boolean }[] };
 
 /** Клавиши, которые интерфейс может отправить в claude (карточка меню, «Остановить»). */
-export type MenuKey = 'up' | 'down' | 'left' | 'right' | 'enter' | 'esc' | 'tab' | 'shift-tab'
+export type MenuKey = 'up' | 'down' | 'left' | 'right' | 'enter' | 'esc' | 'tab' | 'shift-tab' | 'space'
   | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
 
-export interface MenuOption { n: number | null; label: string; description: string; selected: boolean }
+export interface MenuOption {
+  n: number | null; label: string; description: string; selected: boolean;
+  /** множественный выбор: отмечен ли вариант («[✔]») */
+  checked?: boolean;
+  /** «Type something.» — свой ответ: набранный текст встаёт на место подписи */
+  input?: boolean;
+  /** «Submit» под вариантами множественного выбора */
+  submit?: boolean;
+}
 /** Меню Claude Code, разобранное с экрана: запрос разрешения, AskUserQuestion, /model и т. п. */
 export interface ParsedMenu {
   title: string;
@@ -148,12 +158,21 @@ export interface ParsedMenu {
   options: MenuOption[];
   notes: string[];
   hint: string | null;
+  /** multi — чекбоксы (AskUserQuestion с multiSelect) */
+  kind: 'single' | 'multi';
+  /** Вкладки вопросов AskUserQuestion («←  ☐ Цвет  ☐ Размер  ✔ Submit  →»): вопросы без Submit, текущий */
+  tabs: { labels: string[]; current: number } | null;
+  /** Дополнительная ось, меняется ←/→ (effort в /model) */
+  axis: { label: string; value: string } | null;
 }
 export type ScreenState =
   | { kind: 'no-claude' }
   | { kind: 'prompt'; status: string | null; input: string }
   | { kind: 'menu'; menu: ParsedMenu }
   | { kind: 'unknown' };
+export type { UpdateInfo } from './version';
+import type { UpdateInfo } from './version';
+
 export type ExitReason = 'detached' | 'killed' | 'connection-lost';
 export type Unsubscribe = () => void;
 
@@ -186,7 +205,7 @@ export interface Api {
     resize(cols: number, rows: number): void;
     onData(cb: (d: string) => void): Unsubscribe;
     onExit(cb: (reason: ExitReason) => void): Unsubscribe;
-    send(text: string, imagePaths: string[]): Promise<Result<void>>;
+    send(text: string, filePaths: string[]): Promise<Result<void>>;
     setModel(value: string): Promise<Result<void>>;
     setEffort(level: string): Promise<Result<void>>;
   };
@@ -196,8 +215,11 @@ export interface Api {
     dirs(partial: string): Promise<Result<string[]>>;
   };
   upload: {
-    image(id: string, bytes: Uint8Array, ext: ImageExt): Promise<Result<{ remotePath: string }>>;
+    /** Любой файл до 50 МБ в папку загрузок на ВМ; name — исходное имя (войдёт в имя на ВМ) */
+    file(id: string, bytes: Uint8Array, name: string): Promise<Result<{ remotePath: string }>>;
     onProgress(cb: (p: UploadProgress) => void): Unsubscribe;
+    /** Начало файла из папки загрузок (не больше maxBytes) и его полный размер; NOT_FOUND — удалён, BAD_PATH — путь вне папки */
+    read(path: string, maxBytes: number): Promise<Result<{ bytes: Uint8Array; size: number; truncated: boolean }>>;
   };
   clipboard: { read(): Promise<string>; write(text: string): void };
   layout: { get(): Promise<SidebarLayout>; save(l: SidebarLayout): Promise<Result<void>> };
@@ -213,6 +235,15 @@ export interface Api {
     onUnavailable(cb: (e: { session: string; reason: string }) => void): Unsubscribe;
     loadEarlier(): Promise<Result<void>>;
     key(k: MenuKey): Promise<Result<void>>;
+    /** Текст в поле своего ответа меню (без Enter) */
+    typeText(text: string): Promise<Result<void>>;
+  };
+  /** Новая версия на GitHub: get — последняя найденная (событие могло прийти раньше подписки) */
+  updates: {
+    get(): Promise<UpdateInfo | null>;
+    onAvailable(cb: (u: UpdateInfo) => void): Unsubscribe;
+    dismissed(): Promise<string | null>;
+    dismiss(version: string): Promise<void>;
   };
   platform: {
     theme(): Promise<'light' | 'dark'>;

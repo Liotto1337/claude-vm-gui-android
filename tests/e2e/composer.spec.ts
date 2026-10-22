@@ -144,8 +144,10 @@ test('двойной Enter отправляет сообщение один ра
     await box.press('Enter');
     await box.press('Enter');
     await expect(box).toHaveValue('');
+    // Поле пустеет сразу при отправке — ждём, пока сообщение дойдёт (ввод + эхо cat), и ещё немного: второго нет
+    await expect.poll(() => pane(name).match(/ровно-один-раз/g)?.length ?? 0, { timeout: 15_000 }).toBe(2);
     await page.waitForTimeout(1500);
-    expect(pane(name).match(/ровно-один-раз/g)?.length).toBe(2); // ввод + эхо cat
+    expect(pane(name).match(/ровно-один-раз/g)?.length).toBe(2);
   } finally {
     await app.close();
   }
@@ -157,6 +159,25 @@ test('отправка недоступна, пока поле пустое', as
     await expect(page.getByRole('button', { name: 'Отправить' })).toBeDisabled();
     await page.getByLabel('Сообщение для Claude').fill('x');
     await expect(page.getByRole('button', { name: 'Отправить' })).toBeEnabled();
+  } finally {
+    await app.close();
+  }
+});
+
+test('прикрепить любой файл: значок и имя, путь уходит в сообщении', async () => {
+  const { app, page } = await openWith(['cat'], { CVG_FAKE_CLAUDE: '1' });
+  try {
+    await page.locator('input[type=file]').setInputFiles({ name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+    const chip = page.locator('.chip', { hasText: 'a.txt' });
+    await expect(chip.getByText('загружено')).toBeVisible({ timeout: 15_000 });
+    await expect(chip.locator('img')).toHaveCount(0);
+    const added = uploads().filter((f) => !uploadsBefore.includes(f));
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatch(/^\d{8}-\d{6}-[0-9a-f]{6}-a\.txt$/);
+    const box = page.getByLabel('Сообщение для Claude');
+    await box.fill('файл');
+    await box.press('Enter');
+    await expect.poll(() => pane(name), { timeout: 15_000 }).toContain(`файл ${join(UPLOADS, added[0])}`);
   } finally {
     await app.close();
   }
