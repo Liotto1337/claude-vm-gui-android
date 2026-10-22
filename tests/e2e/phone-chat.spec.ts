@@ -146,6 +146,28 @@ test('маленький экран с клавиатурой (360×640 → 360�
   }
 });
 
+test('📎 — системный выбор картинки (галерея, камера, файлы), картинка уходит путём на ВМ', async () => {
+  const { app, page } = await openCat();
+  try {
+    const input = page.locator('.composer input[type="file"]');
+    // Без capture — Android предлагает и галерею, и камеру, и файлы
+    await expect(input).toHaveAttribute('accept', 'image/*');
+    expect(await input.getAttribute('capture')).toBeNull();
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    await input.setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
+    await expect(page.getByText('photo.png')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Сообщение для Claude' }).fill('фото');
+    await page.getByRole('button', { name: 'Отправить' }).tap();
+    // Окно tmux узкое (по телефону) — путь переносится, строки склеиваются
+    const flat = () => pane().replace(/\n/g, '');
+    await expect.poll(flat, { timeout: 15_000 }).toMatch(/фото \/\S+\/\.cache\/claude-vm-gui\/uploads\/\S+?\.png/);
+    const path = /(\/[^\s~]+\/\.cache\/claude-vm-gui\/uploads\/\S+?\.png)/.exec(flat())![1];
+    execFileSync('rm', ['-f', path]);
+  } finally {
+    await app.close();
+  }
+});
+
 /** Свайп касанием по вертикали: из (x, y) до y2. */
 async function swipe(page: Page, x: number, y: number, y2: number) {
   const cdp = await page.context().newCDPSession(page);

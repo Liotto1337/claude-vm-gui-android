@@ -6,6 +6,8 @@ import { fromB64, SeqChannel, toB64 } from './seq-channel';
 
 type Fail = { ok: false; code: string; message: string };
 
+const FILE_CHUNK = 256 * 1024;
+
 /** Нативный плагин (android/.../VmBridgePlugin.kt). Ошибки вызовов — reject с code (NOT_CONNECTED и др.). */
 export interface VmBridgePlugin {
   connect(o: { host: string; port: number; username: string }): Promise<{ ok: true } | Fail>;
@@ -87,9 +89,14 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
     exec: (cmd, o = {}) => plugin.exec({ cmd, ...o }),
     stream: (cmd) => openChannel(cmd),
     openPty: (cmd, cols, rows) => openChannel(cmd, { cols, rows }),
+    // Частями по 256 КБ: мост Capacitor передаёт строки, огромный base64 одним вызовом подвешивал бы интерфейс
     writeFile: async (path, bytes, onProgress) => {
-      await plugin.writeFile({ path, b64: toB64(bytes), offset: 0 });
-      onProgress(bytes.byteLength);
+      for (let offset = 0; offset < bytes.byteLength || offset === 0; offset += FILE_CHUNK) {
+        const part = bytes.subarray(offset, offset + FILE_CHUNK);
+        await plugin.writeFile({ path, b64: toB64(part), offset });
+        onProgress(offset + part.byteLength);
+        if (part.byteLength === 0) break;
+      }
     },
     checkTcp: (host, port) => plugin.checkTcp({ host, port }),
     on: ((e: string, cb: (...a: any[]) => void) => events.on(e, cb)) as ConnectableTransport['on'],

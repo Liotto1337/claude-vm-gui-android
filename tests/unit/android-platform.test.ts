@@ -118,4 +118,16 @@ describe('Android-платформа', () => {
       { method: 'resize', args: { ch: 7, cols: 100, rows: 30 } },
     ]);
   });
+
+  it('картинка 600 КБ уходит в плагин тремя частями по 256 КБ, прогресс — после каждой', async () => {
+    const f = fakePlugin();
+    const p = await androidPlatformWith(deps(f.plugin));
+    const bytes = new Uint8Array(614_400).map((_, i) => i % 251);
+    const progress: number[] = [];
+    await p.ssh.writeFile('/u/1.png', bytes, (n) => progress.push(n));
+    const calls = f.calls.filter((c) => c.method === 'writeFile').map((c) => c.args as { path: string; b64: string; offset: number });
+    expect(calls.map((c) => [c.offset, Buffer.from(c.b64, 'base64').length])).toEqual([[0, 262_144], [262_144, 262_144], [524_288, 90_112]]);
+    expect(Buffer.concat(calls.map((c) => Buffer.from(c.b64, 'base64'))).equals(Buffer.from(bytes))).toBe(true);
+    expect(progress).toEqual([262_144, 524_288, 614_400]);
+  });
 });

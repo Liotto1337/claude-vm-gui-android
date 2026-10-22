@@ -284,7 +284,8 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
               type="file"
               hidden
               multiple
-              accept="image/png,image/jpeg,image/gif,image/webp"
+              // Телефон: image/* без capture — Android предлагает галерею, камеру и файлы (неподходящий формат отклонит загрузка)
+              accept={phone ? 'image/*' : 'image/png,image/jpeg,image/gif,image/webp'}
               onChange={(e) => {
                 void addFiles([...(e.target.files ?? [])]);
                 e.target.value = '';
