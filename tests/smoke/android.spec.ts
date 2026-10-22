@@ -60,7 +60,9 @@ test('APK: подключение, лента, поворот, уведомле�
     await page.getByLabel('Адрес ВМ').fill('10.0.2.2', { timeout: 60_000 });
     await page.getByLabel('SSH-ключ (закрытый, OpenSSH или PEM)').fill(readFileSync(join(homedir(), '.ssh', 'cvg_test_ed25519'), 'utf8'));
     await page.getByRole('button', { name: 'Сохранить и подключиться' }).click();
-    await page.getByRole('dialog', { name: 'Новый сервер' }).getByRole('button', { name: 'Доверять' }).click({ timeout: 120_000 });
+    // Первый запуск: система может пересоздать Activity посреди подключения — новый интерфейс спросит ключ заново
+    await withPage(device, (p) => p.getByRole('dialog', { name: 'Новый сервер' }).getByRole('button', { name: 'Доверять' }).click({ timeout: 120_000 }));
+    page = await appPage(device);
 
     await page.getByRole('navigation', { name: 'Сессии' }).getByRole('button', { name: new RegExp(`^${SESSION}`) }).click({ timeout: 90_000 });
     const feed = page.getByRole('region', { name: 'Переписка' });
