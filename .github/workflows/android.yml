@@ -34,6 +34,11 @@ jobs:
         run: npm run typecheck
       - name: Модульные тесты
         run: npm test
+      - name: Веб-часть и Capacitor
+        # cap sync создаёт android/capacitor-cordova-android-plugins — без него Gradle не настраивается
+        run: |
+          npm run android:web
+          npx cap sync android
       - name: JUnit и Robolectric
         # Тесты против sshd ВМ без тестового ключа пропускаются
         run: cd android && ./gradlew testDebugUnitTest
@@ -50,8 +55,6 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          npm run android:web
-          npx cap sync android
           cd android
           VERSION=$(node -p "require('../package.json').version")
           mkdir -p ../release
