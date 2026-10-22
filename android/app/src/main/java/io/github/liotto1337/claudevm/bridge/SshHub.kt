@@ -3,6 +3,7 @@ package io.github.liotto1337.claudevm.bridge
 import android.content.Context
 import io.github.liotto1337.claudevm.secrets.KeyImport
 import io.github.liotto1337.claudevm.secrets.SecretStore
+import io.github.liotto1337.claudevm.service.SshService
 import io.github.liotto1337.claudevm.ssh.ExecResult
 import io.github.liotto1337.claudevm.ssh.HostKeyPrompt
 import io.github.liotto1337.claudevm.ssh.HostKeys
@@ -19,7 +20,17 @@ import java.io.File
  * Единственное SSH-соединение приложения. Живёт в процессе, а не в Activity: пересоздание Activity
  * (поворот, смена темы) и перезагрузка WebView его не рвут. События уходят в sink — его ставит плагин.
  */
-class SshHub(private val secrets: SecretStore, private val knownHosts: File) {
+class SshHub(private val secrets: SecretStore, private val knownHosts: File, private val appCtx: Context? = null) {
+    /** Настройки фона из интерфейса: keepAlive — foreground-сервис, notifications — уведомления, tmux — команда tmux (тесты: свой сервер), sessions — сколько сессий в списке. */
+    data class Background(val keepAlive: Boolean = true, val notifications: Boolean = true, val tmux: String = "tmux", val sessions: Int = 0)
+
+    @Volatile var background = Background()
+        private set
+    /** Activity на экране (onStart…onStop): уведомления о сессиях не нужны */
+    @Volatile var visible = true
+    /** Изменилось состояние соединения или число сессий — сервис обновляет своё уведомление */
+    @Volatile var onChange: (() -> Unit)? = null
+
     @Volatile var sink: ChunkBatcher.Sink? = null
     private val batcher = ChunkBatcher({ e, d -> sink?.emit(e, d) })
     @Volatile var session: SshSession? = null
@@ -32,8 +43,11 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File) {
     }
 
     private val listener = object : SshListener {
-        override fun onState(state: String, attempt: Int?) =
+        override fun onState(state: String, attempt: Int?) {
             emit("state", JSONObject().put("state", state).apply { if (attempt != null) put("attempt", attempt) })
+            onChange?.invoke()
+            if (state == "failed") syncService()
+        }
         override fun onPreflight(step: String, status: String, detail: String) =
             emit("preflight", JSONObject().put("step", step).put("status", status).put("detail", detail))
         override fun onLost() = emit("lost")
@@ -65,6 +79,7 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File) {
             next.close()
             if (session === next) session = null
         }
+        syncService()
         return r
     }
 
@@ -91,6 +106,20 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File) {
         answerHostKey(false)
         session?.close()
         session = null
+        syncService()
+    }
+
+    fun setBackground(b: Background) {
+        val changed = b.sessions != background.sessions
+        background = b
+        syncService()
+        if (changed) onChange?.invoke()
+    }
+
+    /** Foreground-сервис — пока есть соединение (или оно переподключается) и включено «Держать связь в фоне». */
+    private fun syncService() {
+        val ctx = appCtx ?: return
+        if (session != null && background.keepAlive) runCatching { SshService.start(ctx) } else SshService.stop(ctx)
     }
 
     /** Ключ проверяется при импорте: тип, нужна ли парольная фраза. Ответ — как Result интерфейса. */
@@ -123,7 +152,7 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File) {
         @Volatile private var instance: SshHub? = null
 
         fun get(ctx: Context): SshHub = instance ?: synchronized(this) {
-            instance ?: SshHub(SecretStore(ctx.applicationContext), File(ctx.filesDir, "known_hosts")).also { instance = it }
+            instance ?: SshHub(SecretStore(ctx.applicationContext), File(ctx.filesDir, "known_hosts"), ctx.applicationContext).also { instance = it }
         }
     }
 }

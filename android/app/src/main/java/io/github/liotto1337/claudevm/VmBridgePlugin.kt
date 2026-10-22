@@ -4,7 +4,14 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PermissionState
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.bridge.ChunkBatcher
 import io.github.liotto1337.claudevm.bridge.SshHub
 import io.github.liotto1337.claudevm.ssh.NotConnectedException
@@ -19,7 +26,7 @@ import kotlinx.coroutines.launch
 import java.util.Base64
 
 /** Мост JS ↔ SshHub. Контракт — VmBridgePlugin в src/platform/android.ts. */
-@CapacitorPlugin(name = "VmBridge")
+@CapacitorPlugin(name = "VmBridge", permissions = [Permission(alias = "notifications", strings = [Manifest.permission.POST_NOTIFICATIONS])])
 class VmBridgePlugin : Plugin() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var hub: SshHub
@@ -28,6 +35,30 @@ class VmBridgePlugin : Plugin() {
     override fun load() {
         hub = SshHub.get(context)
         hub.sink = sink
+        // Приложение открыто касанием уведомления о сессии (холодный старт)
+        activity?.intent?.let { openSessionFrom(it) }
+    }
+
+    private fun openSessionFrom(intent: Intent) {
+        val name = intent.getStringExtra(Notifications.EXTRA_SESSION) ?: return
+        intent.removeExtra(Notifications.EXTRA_SESSION)
+        // Слушатель в JS может ещё не подписаться — событие ждёт его
+        notifyListeners("openSession", JSObject().put("name", name), true)
+    }
+
+    override fun handleOnNewIntent(intent: Intent) {
+        super.handleOnNewIntent(intent)
+        openSessionFrom(intent)
+    }
+
+    override fun handleOnStart() {
+        super.handleOnStart()
+        hub.visible = true
+    }
+
+    override fun handleOnStop() {
+        super.handleOnStop()
+        hub.visible = false
     }
 
     override fun handleOnDestroy() {
@@ -95,5 +126,35 @@ class VmBridgePlugin : Plugin() {
 
     @PluginMethod fun secretsHas(call: PluginCall) = run(call) { JSObject().put("value", hub.secretsHas(call.getString("name") ?: "")) }
 
-    @PluginMethod fun setBackground(call: PluginCall) = run(call) { null }
+    @PluginMethod fun setBackground(call: PluginCall) = run(call) {
+        hub.setBackground(
+            SshHub.Background(
+                keepAlive = call.getBoolean("keepAlive", true) == true,
+                notifications = call.getBoolean("notifications", true) == true,
+                tmux = call.getString("tmux") ?: "tmux",
+                sessions = call.getInt("sessions") ?: 0,
+            ),
+        )
+        null
+    }
+
+    /** Сессию открыли в приложении — её уведомление больше не нужно. */
+    @PluginMethod fun clearNotification(call: PluginCall) = run(call) {
+        call.getString("name")?.let { Notifications.cancelSession(context, it) }
+        null
+    }
+
+    /** Разрешение на уведомления (Android 13+); раньше оно не нужно. */
+    @PluginMethod fun requestNotifications(call: PluginCall) {
+        if (Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED) {
+            call.resolve(JSObject().put("granted", true))
+            return
+        }
+        requestPermissionForAlias("notifications", call, "notificationsResult")
+    }
+
+    @PermissionCallback
+    private fun notificationsResult(call: PluginCall) {
+        call.resolve(JSObject().put("granted", getPermissionState("notifications") == PermissionState.GRANTED))
+    }
 }

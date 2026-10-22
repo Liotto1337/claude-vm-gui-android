@@ -343,3 +343,5 @@
 .session-header .btn-kill { color: var(--danger); }
 .session-box:focus, .chat:focus { outline: none; }
 .session-box:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; border-radius: 8px; }
+.check-row { display: flex; align-items: center; gap: 10px; font-size: 14px; min-height: 32px; cursor: pointer; }
+.check-row input { width: 18px; height: 18px; accent-color: var(--accent-strong); }

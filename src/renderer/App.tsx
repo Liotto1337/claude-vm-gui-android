@@ -5,7 +5,7 @@ import { MainView } from './components/MainView';
 import { SettingsDialog } from './components/SettingsDialog';
 import { api } from './api';
 import { backPressed } from './back-stack';
-import { init, useAppState } from './state';
+import { init, openFromNotification, useAppState } from './state';
 
 export function App() {
   const { view, hostKey } = useAppState();
@@ -13,6 +13,7 @@ export function App() {
     void init();
   }, []);
   useEffect(() => api.platform.onBack(() => backPressed(() => api.platform.minimize())), []);
+  useEffect(() => api.platform.onOpenSession(openFromNotification), []);
 
   return (
     <>

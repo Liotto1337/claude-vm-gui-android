@@ -25,6 +25,9 @@ export interface VmBridgePlugin {
   checkTcp(o: { host: string; port: number }): Promise<{ ok: boolean; ms: number | null }>;
   secretsSave(o: { name: 'password' | 'key'; value: string | null; passphrase?: string }): Promise<{ ok: true; keyType?: string } | Fail>;
   secretsHas(o: { name: 'password' | 'key' }): Promise<{ value: 'yes' | 'no' | 'unreadable' }>;
+  setBackground(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number }): Promise<void>;
+  clearNotification(o: { name: string }): Promise<void>;
+  requestNotifications(): Promise<{ granted: boolean }>;
   addListener(event: string, cb: (data: never) => void): Promise<{ remove(): Promise<void> }>;
 }
 
@@ -119,5 +122,14 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
     openExternal: d.openExternal,
     onBack: d.onBack,
     minimize: d.minimize,
+    background: {
+      set: (o) => void plugin.setBackground(o).catch(() => {}),
+      onOpenSession: (cb) => {
+        const h = plugin.addListener('openSession', ((e: { name: string }) => cb(e.name)) as (data: never) => void);
+        return () => void h.then((x) => x.remove());
+      },
+      sessionOpened: (name) => void plugin.clearNotification({ name }).catch(() => {}),
+      requestNotifications: async () => (await plugin.requestNotifications().catch(() => ({ granted: false }))).granted,
+    },
   };
 }

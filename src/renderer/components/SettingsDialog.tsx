@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { VmConfig } from '@shared/ipc';
+import { api } from '../api';
 import { useBack } from '../back-stack';
 import { keyToSave, passwordToSave, type PasswordMode } from '../settings-password';
 import { connect, getState, previewTheme, saveConfig, setState, useAppState } from '../state';
@@ -18,11 +19,21 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
   const [keyText, setKeyText] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [askPassphrase, setAskPassphrase] = useState(false);
+  const [notifyDenied, setNotifyDenied] = useState(false);
   const set = (patch: Partial<VmConfig>) => setForm((f) => ({ ...f, ...patch }));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const next = { ...form, port: Number(portText) };
+    // Уведомления включают впервые — спросить разрешение Android (13+); отказ — выключить и объяснить
+    if (next.notifications && !config?.notifications) {
+      const granted = await api.platform.requestNotifications();
+      if (!granted) {
+        next.notifications = false;
+        set({ notifications: false });
+        setNotifyDenied(true);
+      }
+    }
     const pwd = passwordToSave(pwdMode, password, config?.passwordUnreadable === true);
     const err = await saveConfig(next, pwd, keyToSave(keyMode, keyText, passphrase));
     setError(err);
@@ -130,6 +141,29 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
             )}
           </div>
         )}
+        <div className="field">
+          <label className="check-row">
+            <input type="checkbox" checked={form.keepAlive} onChange={(e) => set({ keepAlive: e.target.checked })} />
+            <span>Держать связь в фоне</span>
+          </label>
+          <span className="hint">Пока приложение свёрнуто, соединение с ВМ не рвётся (постоянное уведомление «Подключено к ВМ»)</span>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={form.notifications}
+              onChange={(e) => {
+                set({ notifications: e.target.checked });
+                setNotifyDenied(false);
+              }}
+            />
+            <span>Уведомления</span>
+          </label>
+          {notifyDenied ? (
+            <span className="hint hint-error">Уведомления запрещены в настройках Android — разрешите их там и включите снова</span>
+          ) : (
+            <span className="hint">«Claude закончил» и «Claude ждёт ответа», пока приложение свёрнуто</span>
+          )}
+        </div>
         <div className="field">
           <label htmlFor="set-theme">Тема</label>
           <select

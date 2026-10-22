@@ -25,4 +25,13 @@ export interface Platform {
   onBack?(cb: () => void): () => void;
   /** Свернуть приложение (Android) */
   minimize?(): void;
+  /** Работа в фоне (Android): foreground-сервис, уведомления о сессиях, переход по уведомлению */
+  background?: {
+    set(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number }): void;
+    onOpenSession(cb: (name: string) => void): () => void;
+    /** Сессию открыли в приложении — снять её уведомление */
+    sessionOpened(name: string): void;
+    /** Разрешение на уведомления (Android 13+): true — можно */
+    requestNotifications(): Promise<boolean>;
+  };
 }

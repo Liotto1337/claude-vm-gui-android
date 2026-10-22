@@ -128,7 +128,9 @@ export async function connect(): Promise<void> {
     void api.metrics.info().then((i) => i.ok && setState({ systemInfo: i.data }));
     const [list, saved] = await Promise.all([api.tmux.list(), api.layout.get()]);
     const sessions = list.ok ? list.data : [];
-    const last = state.config?.lastSession;
+    // Приложение открыто касанием уведомления о сессии — она важнее последней открытой
+    const last = pendingOpen ?? state.config?.lastSession;
+    pendingOpen = null;
     setState({ layout: saved });
     layoutLoaded = true;
     applySessions(sessions);
@@ -215,6 +217,14 @@ export function updateLayout(fn: (l: SidebarLayout) => SidebarLayout): void {
   if (layout === state.layout) return;
   setState({ layout });
   void api.layout.save(layout);
+}
+
+let pendingOpen: string | null = null;
+
+/** Касание уведомления о сессии: открыть её сейчас или сразу после подключения. */
+export function openFromNotification(name: string): void {
+  if (state.view === 'main' && state.sessions.some((s) => s.name === name)) openSession(name);
+  else pendingOpen = name;
 }
 
 export function openSession(name: string | null): void {

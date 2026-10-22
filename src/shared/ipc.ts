@@ -219,6 +219,10 @@ export interface Api {
     onBack(cb: () => void): Unsubscribe;
     /** Свернуть приложение */
     minimize(): void;
+    /** Касание уведомления о сессии — открыть её */
+    onOpenSession(cb: (name: string) => void): Unsubscribe;
+    /** Разрешение на уведомления (Android 13+) */
+    requestNotifications(): Promise<boolean>;
     /** Мелкие настройки интерфейса (размер шрифта терминала) — Preferences */
     pref(key: string): Promise<string | null>;
     setPref(key: string, value: string): Promise<void>;

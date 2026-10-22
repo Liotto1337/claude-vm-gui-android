@@ -30,7 +30,12 @@ export function createApi(p: Platform): Api {
   return {
     config: {
       get: config,
-      save: (cfg, password, key) => saveConfig(p.prefs, p.secrets, cfg, password, key),
+      save: async (cfg, password, key) => {
+        const r = await saveConfig(p.prefs, p.secrets, cfg, password, key);
+        // Переключатели фона действуют сразу, без переподключения
+        if (r.ok) c.syncBackground(cfg);
+        return r;
+      },
     },
     connection: {
       connect: () => c.connect(),
@@ -95,6 +100,8 @@ export function createApi(p: Platform): Api {
       },
       onBack: (cb) => p.onBack?.(cb) ?? (() => {}),
       minimize: () => p.minimize?.(),
+      onOpenSession: (cb) => p.background?.onOpenSession(cb) ?? (() => {}),
+      requestNotifications: () => p.background?.requestNotifications() ?? Promise.resolve(true),
       pref: (key) => p.prefs.get(`ui:${key}`).catch(() => null),
       setPref: (key, value) => p.prefs.set(`ui:${key}`, value).catch(() => {}),
     },

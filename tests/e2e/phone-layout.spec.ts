@@ -145,3 +145,21 @@ test('«Назад»: диалог → список сессий → сверн�
     await app.close();
   }
 });
+
+test('касание уведомления открывает сессию; нативной стороне уходят настройки фона и число сессий', async () => {
+  const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
+  const { app, page } = await launchApp(
+    { CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: trustedKnownHosts(), CVG_TMUX_SOCKET: SOCK, CVG_TEST_HOOKS: '1' },
+    PHONE,
+  );
+  try {
+    await expect(nav(page)).toBeInViewport({ timeout: 20_000 });
+    const bg = () => page.evaluate(() => (window as unknown as { __cvg: { background?: unknown } }).__cvg.background);
+    await expect.poll(bg).toEqual({ keepAlive: true, notifications: true, tmux: `tmux -L ${SOCK}`, sessions: 2 });
+    await page.evaluate(() => (window as unknown as { __cvg: { openSession(n: string): void } }).__cvg.openSession('cvg-test-b'));
+    await expect(page.getByRole('heading', { name: 'cvg-test-b' })).toBeVisible();
+    await expect(nav(page)).not.toBeInViewport();
+  } finally {
+    await app.close();
+  }
+});

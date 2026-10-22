@@ -9,7 +9,7 @@ import { knobs } from './knobs';
 import type { Platform } from './platform';
 import type { ConnectableTransport } from './transport';
 import { TerminalService } from './terminal';
-import { TmuxService } from './tmux';
+import { tmuxCmd, TmuxService } from './tmux';
 import { UploadService } from './upload';
 
 interface Services {
@@ -64,7 +64,10 @@ export class AppController {
     this.need(async (s) => {
       const r = await s.term.open(name, cols, rows);
       // Устаревший open (пока открывался канал, выбрали другую сессию) тоже ok — ленту запускаем только для текущей
-      if (r.ok && s.term.current === name) this.startChat(s, name);
+      if (r.ok && s.term.current === name) {
+        this.startChat(s, name);
+        this.platform.background?.sessionOpened(name);
+      }
       return r;
     });
   termWrite = (data: string) => this.s?.term.write(data);
@@ -205,11 +208,26 @@ export class AppController {
     const upload = new UploadService(conn);
     upload.on('progress', (p) => this.emit('upload:progress', p));
     const hints = new HintsService(conn);
-    const stopPolling = tmux.startPolling((sessions) => this.emit('tmux:sessions', sessions));
+    this.sessions = n;
+    this.syncBackground(cfg);
+    const stopPolling = tmux.startPolling((sessions) => {
+      this.emit('tmux:sessions', sessions);
+      if (sessions.length !== this.sessions) {
+        this.sessions = sessions.length;
+        if (this.s) this.syncBackground(this.s.cfg);
+      }
+    });
     this.s = { conn, cfg, unsubscribe, tmux, term, hints, upload, watch, transcript, metrics, claudeDir, stopPolling };
     metrics.start();
     void upload.cleanup();
     return ok(undefined);
+  }
+
+  private sessions = 0;
+
+  /** Настройки фона и число сессий — нативной стороне (foreground-сервис, уведомления). */
+  syncBackground(cfg: VmConfig): void {
+    this.platform.background?.set({ keepAlive: cfg.keepAlive, notifications: cfg.notifications, tmux: tmuxCmd(), sessions: this.sessions });
   }
 
   /** «Отключиться»: сервисы и соединение. */

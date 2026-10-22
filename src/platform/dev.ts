@@ -14,12 +14,22 @@ export const localPrefs: Prefs = {
  */
 export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Platform {
   const bridge = devBridgeTransport(url);
-  const hooks: { lastLink?: string; dropConnection?: () => void; back?: () => void; minimized?: number } = {};
+  const hooks: {
+    lastLink?: string;
+    dropConnection?: () => void;
+    back?: () => void;
+    minimized?: number;
+    background?: unknown;
+    openSession?: (name: string) => void;
+  } = {};
+  const opens = new Set<(name: string) => void>();
   const backs = new Set<() => void>();
   if (opts.testHooks) {
     hooks.dropConnection = () => void bridge.call({ op: '__drop' });
     // Кнопка «Назад» Android и сворачивание — для E2E
     hooks.back = () => backs.forEach((cb) => cb());
+    // «Касание уведомления» для E2E
+    hooks.openSession = (name) => opens.forEach((cb) => cb(name));
     (window as unknown as { __cvg: typeof hooks }).__cvg = hooks;
   }
   return {
@@ -44,6 +54,17 @@ export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Pl
     },
     minimize: () => {
       hooks.minimized = (hooks.minimized ?? 0) + 1;
+    },
+    background: {
+      set: (o) => {
+        hooks.background = o;
+      },
+      onOpenSession: (cb) => {
+        opens.add(cb);
+        return () => opens.delete(cb);
+      },
+      sessionOpened: () => {},
+      requestNotifications: async () => true,
     },
     openExternal: async (url) => {
       if (opts.testHooks) hooks.lastLink = url;
