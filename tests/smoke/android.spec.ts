@@ -1,14 +1,17 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _android, expect, test, type AndroidDevice, type Page } from '@playwright/test';
 
 // Настоящий APK на эмуляторе (scripts/smoke-android.sh): настройки → подключение к ВМ (10.0.2.2) → ключ хоста →
-// лента фейкового claude → поворот → свернуть → меню в claude → уведомление «ждёт ответа» → его намерение открывает сессию
+// лента фейкового claude → поворот → свернуть (опрос сессии стоит) → меню в claude → уведомление «ждёт ответа» → его намерение открывает сессию
 const PKG = 'io.github.liotto1337.claudevm';
 const SESSION = 'cvg-smoke-claude';
 const tmux = (...args: string[]) => execFileSync('tmux', ['-L', 'cvg-smoke', ...args]);
+/** Сколько раз интерфейс опросил открытую сессию: хук tmux на display-message пишет строку в файл */
+const POLLS = join(mkdtempSync(join(tmpdir(), 'cvg-polls-')), 'polls');
+const pollTimes = () => (existsSync(POLLS) ? readFileSync(POLLS, 'utf8').split('\n').filter(Boolean).map(Number) : []);
 
 async function appPage(device: AndroidDevice): Promise<Page> {
   const wv = await device.webView({ pkg: PKG }, { timeout: 120_000 });
@@ -44,6 +47,7 @@ const openFromNotification = (device: AndroidDevice, session: string) =>
 test('APK: подключение, лента, поворот, уведомление «ждёт ответа» и переход по нему', async () => {
   const [device] = await _android.devices();
   expect(device, 'эмулятор не найден').toBeTruthy();
+  tmux('set-hook', '-g', 'after-display-message', `run-shell 'date +%s%3N >> ${POLLS}'`);
   try {
     await device.shell(`am start -n ${PKG}/.MainActivity`);
     // Тестовые настройки: свой сервер tmux и каталог журналов фейкового claude
@@ -82,8 +86,17 @@ test('APK: подключение, лента, поворот, уведомле�
     await new Promise((r) => setTimeout(r, 4000));
 
     // Свернуть; первая выборка опроса молчит — потом меню в claude
+    // Хук действительно считает: пока сессия на экране, опросы идут
+    expect(pollTimes().length).toBeGreaterThan(5);
+    await device.shell('logcat -c');
     await device.shell('input keyevent KEYCODE_HOME');
+    // Свёрнутое приложение не опрашивает открытую сессию (display-message — раз в 500 мс, пока она на экране);
+    // нативные уведомления этой командой не пользуются. Вернётся — карточка меню ниже подтвердит, что опрос снова идёт.
+    // Сигнал — appStateChange при остановке Activity; на эмуляторе она бывает через секунды после паузы
+    await expect.poll(async () => (await device.shell('logcat -d -s Capacitor:D')).toString(), { timeout: 30_000 }).toContain('App stopped');
+    const stopped = Date.now() + 1000;
     await new Promise((r) => setTimeout(r, 8000));
+    expect(pollTimes().filter((t) => t > stopped).map((t) => t - stopped)).toEqual([]);
     tmux('send-keys', '-t', `=${SESSION}:`, '-l', 'menu');
     tmux('send-keys', '-t', `=${SESSION}:`, 'Enter');
     await expect.poll(() => notifications(device), { timeout: 30_000, intervals: [2000] }).toContain(`android.title=String (${SESSION}: Claude ждёт ответа)`);

@@ -62,4 +62,20 @@ describe('долгое нажатие', () => {
     el.dispatchEvent(new Event('click'));
     expect(clicks).toBe(1);
   });
+
+  it('клик после срабатывания не пришёл — первое касание в открывшемся листе не теряется', () => {
+    // Лист рисуется порталом вне списка: касание приходит в документ, а не в el
+    const doc = new EventTarget();
+    const list = Object.assign(new EventTarget(), { ownerDocument: doc });
+    longPress(list as unknown as HTMLElement, () => {});
+    let clicks = 0;
+    doc.addEventListener('click', () => clicks++);
+    list.dispatchEvent(ev('pointerdown'));
+    vi.advanceTimersByTime(500);
+    list.dispatchEvent(ev('pointerup'));
+    // Браузер не прислал click (палец сдвинулся, под ним появился лист)
+    doc.dispatchEvent(Object.assign(ev('pointerdown'), { pointerId: 2 }));
+    doc.dispatchEvent(new Event('click'));
+    expect(clicks).toBe(1);
+  });
 });

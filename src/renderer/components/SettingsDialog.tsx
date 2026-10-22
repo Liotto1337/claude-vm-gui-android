@@ -84,6 +84,8 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
               className="mono key-input"
               rows={4}
               spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
               autoComplete="off"
               value={keyText}
               placeholder={keyMode === 'deleted' ? 'Сохранённый ключ будет удалён' : '-----BEGIN OPENSSH PRIVATE KEY-----'}

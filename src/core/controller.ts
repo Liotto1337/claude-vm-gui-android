@@ -98,7 +98,39 @@ export class AppController {
   /** Лента открытой сессии: экран (меню, статус) и журнал Claude Code. */
   private startChat(s: Services, name: string): void {
     s.transcript.stop();
-    s.watch.start(name);
+    if (!this.hidden) s.watch.start(name);
+  }
+
+  private hidden = false;
+
+  /**
+   * Приложение свёрнуто (страница скрыта): опросы по SSH — экран сессии, список tmux, метрики — стоят,
+   * за сессиями следят уведомления нативной стороны. Вернулись — опросы снова идут.
+   */
+  setHidden(hidden: boolean): void {
+    if (hidden === this.hidden) return;
+    this.hidden = hidden;
+    const s = this.s;
+    if (!s) return;
+    if (hidden) {
+      s.stopPolling();
+      s.metrics.stop();
+      s.watch.stop();
+      return;
+    }
+    s.stopPolling = this.pollSessions(s.tmux);
+    s.metrics.start();
+    if (s.term.current) s.watch.start(s.term.current);
+  }
+
+  private pollSessions(tmux: TmuxService): () => void {
+    return tmux.startPolling((sessions) => {
+      this.emit('tmux:sessions', sessions);
+      if (sessions.length !== this.sessions) {
+        this.sessions = sessions.length;
+        if (this.s) this.syncBackground(this.s.cfg);
+      }
+    });
   }
 
   private stopChat(s: Services): void {
@@ -212,15 +244,9 @@ export class AppController {
     const hints = new HintsService(conn);
     this.sessions = n;
     this.syncBackground(cfg);
-    const stopPolling = tmux.startPolling((sessions) => {
-      this.emit('tmux:sessions', sessions);
-      if (sessions.length !== this.sessions) {
-        this.sessions = sessions.length;
-        if (this.s) this.syncBackground(this.s.cfg);
-      }
-    });
+    const stopPolling = this.hidden ? () => {} : this.pollSessions(tmux);
     this.s = { conn, cfg, unsubscribe, tmux, term, hints, upload, watch, transcript, metrics, claudeDir, stopPolling };
-    metrics.start();
+    if (!this.hidden) metrics.start();
     void upload.cleanup();
     return ok(undefined);
   }

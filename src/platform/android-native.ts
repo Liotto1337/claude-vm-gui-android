@@ -42,5 +42,10 @@ export function androidPlatform(): Promise<Platform> {
       return () => void h.then((x) => x.remove());
     },
     minimize: () => void App.minimizeApp(),
+    // Свёрнуто приложение или нет: страница WebView в фоне остаётся «visible»
+    onVisibility: (cb) => {
+      const h = App.addListener('appStateChange', (s) => cb(s.isActive));
+      return () => void h.then((x) => x.remove());
+    },
   });
 }

@@ -13,9 +13,9 @@ import android.content.Intent
 import android.os.Build
 import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.bridge.ChunkBatcher
+import io.github.liotto1337.claudevm.bridge.PluginErrors
 import io.github.liotto1337.claudevm.bridge.SerialQueue
 import io.github.liotto1337.claudevm.bridge.SshHub
-import io.github.liotto1337.claudevm.ssh.NotConnectedException
 import io.github.liotto1337.claudevm.ssh.SshConfig
 import io.github.liotto1337.claudevm.ssh.SshResult
 import io.github.liotto1337.claudevm.ssh.SshSession
@@ -72,32 +72,23 @@ class VmBridgePlugin : Plugin() {
         scope.cancel()
     }
 
-    /** Ошибки — reject с кодом: NOT_CONNECTED, если соединения нет. */
-    private fun run(call: PluginCall, block: suspend () -> JSObject?) {
-        scope.launch {
-            try {
-                call.resolve(block() ?: JSObject())
-            } catch (e: NotConnectedException) {
-                call.reject("NOT_CONNECTED", "NOT_CONNECTED")
-            } catch (e: Exception) {
-                call.reject(e.message ?: e.javaClass.simpleName, "NOT_CONNECTED")
-            }
+    /** Ошибки — reject с кодом: NOT_CONNECTED, если соединения нет, иначе SSH_ERROR. */
+    private suspend fun settle(call: PluginCall, block: suspend () -> JSObject?) {
+        try {
+            call.resolve(block() ?: JSObject())
+        } catch (e: Exception) {
+            call.reject(PluginErrors.message(e), PluginErrors.code(e))
         }
+    }
+
+    private fun run(call: PluginCall, block: suspend () -> JSObject?) {
+        scope.launch { settle(call, block) }
     }
 
     // Операции с каналами — строго по очереди: иначе нажатия в терминале могли бы переставиться
     private val ordered = SerialQueue(scope)
 
-    private fun runOrdered(call: PluginCall, block: suspend () -> JSObject?) =
-        ordered.submit {
-            try {
-                call.resolve(block() ?: JSObject())
-            } catch (e: NotConnectedException) {
-                call.reject("NOT_CONNECTED", "NOT_CONNECTED")
-            } catch (e: Exception) {
-                call.reject(e.message ?: e.javaClass.simpleName, "NOT_CONNECTED")
-            }
-        }
+    private fun runOrdered(call: PluginCall, block: suspend () -> JSObject?) = ordered.submit { settle(call, block) }
 
     private fun PluginCall.ch(): Int = getInt("ch") ?: -1
 

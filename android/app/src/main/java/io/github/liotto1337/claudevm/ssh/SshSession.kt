@@ -18,6 +18,7 @@ import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.connection.channel.direct.SessionChannel
 import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.OpenMode
+import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 import net.schmizz.sshj.userauth.method.AuthKeyboardInteractive
@@ -384,7 +385,8 @@ class SshSession(
      * offset 0 — файл создаётся заново, иначе data дописывается с этого места (большой файл — частями).
      */
     suspend fun writeFile(path: String, data: ByteArray, offset: Long = 0, onProgress: (Long) -> Unit) = withContext(Dispatchers.IO) {
-        need().newSFTPClient().use { sftp ->
+        val sftp = sftpFor(need())
+        try {
             val modes = if (offset == 0L) EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC) else EnumSet.of(OpenMode.WRITE)
             sftp.open(path, modes, FileAttributes.Builder().withPermissions(0x180).build()).use { f ->
                 var off = 0
@@ -395,7 +397,26 @@ class SshSession(
                     onProgress(off.toLong())
                 }
             }
+        } catch (e: Exception) {
+            // Сломанный клиент не держим: следующая запись откроет новый
+            dropSftp(sftp)
+            throw e
         }
+    }
+
+    /** Клиент SFTP — один на соединение: картинка уходит частями, и каждая не открывает подсистему заново. */
+    private var sftp: Pair<SSHClient, SFTPClient>? = null
+
+    @Synchronized private fun sftpFor(c: SSHClient): SFTPClient {
+        sftp?.let { (owner, s) -> if (owner === c && s.sftpEngine.subsystem.isOpen) return s }
+        sftp?.second?.let { runCatching { it.close() } }
+        return c.newSFTPClient().also { sftp = c to it }
+    }
+
+    @Synchronized private fun dropSftp(s: SFTPClient? = sftp?.second) {
+        if (s == null || sftp?.second !== s) return
+        sftp = null
+        runCatching { s.close() }
     }
 
     fun close() {
@@ -404,6 +425,7 @@ class SshSession(
         val c = client
         client = null
         channels.keys.toList().forEach { closeChannelState(it) }
+        dropSftp()
         runCatching { c?.disconnect() }
         listener.onState("idle", null)
         scope.cancel()

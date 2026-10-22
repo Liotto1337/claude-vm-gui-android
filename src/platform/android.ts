@@ -39,6 +39,7 @@ export interface AndroidDeps {
   openExternal(url: string): Promise<void>;
   onBack?(cb: () => void): () => void;
   minimize?(): void;
+  onVisibility?(cb: (visible: boolean) => void): () => void;
 }
 
 const err = (code: string, message: string) => fail(code as ErrorCode, message);
@@ -153,6 +154,7 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
     openExternal: d.openExternal,
     onBack: d.onBack,
     minimize: d.minimize,
+    onVisibility: d.onVisibility,
     background: {
       set: (o) => void plugin.setBackground(o).catch(() => {}),
       onOpenSession: (cb) => {

@@ -1,6 +1,7 @@
 package io.github.liotto1337.claudevm.bridge
 
 import android.content.Context
+import io.github.liotto1337.claudevm.net.NetworkWatch
 import io.github.liotto1337.claudevm.secrets.KeyImport
 import io.github.liotto1337.claudevm.secrets.SecretStore
 import io.github.liotto1337.claudevm.service.SshService
@@ -36,11 +37,11 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
     @Volatile var session: SshSession? = null
         private set
     @Volatile private var hostKeyAnswer: CompletableDeferred<Boolean>? = null
+    /** Переподключение остановлено (ключ сервера сменился): связи нет и не будет, пока человек не подключится заново */
+    @Volatile private var failed = false
+    private var watch: NetworkWatch? = null
 
-    private fun emit(event: String, data: JSONObject = JSONObject()) {
-        batcher.flush()
-        sink?.emit(event, data)
-    }
+    private fun emit(event: String, data: JSONObject = JSONObject()) = batcher.emitAfterChunks(event, data)
 
     /** События сессии — только пока она текущая: устаревшая (закрытая при новом connect) не мигает интерфейсу «ошибкой». */
     private fun listenerFor(owner: () -> SshSession?): SshListener = object : SshListener {
@@ -57,9 +58,10 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
 
     private val listener = object : SshListener {
         override fun onState(state: String, attempt: Int?) {
+            failed = state == "failed"
             emit("state", JSONObject().put("state", state).apply { if (attempt != null) put("attempt", attempt) })
             onChange?.invoke()
-            if (state == "failed") syncService()
+            if (failed) sync()
         }
         override fun onPreflight(step: String, status: String, detail: String) =
             emit("preflight", JSONObject().put("step", step).put("status", status).put("detail", detail))
@@ -85,6 +87,7 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
             return SshResult.Ok
         }
         session = null
+        failed = false
         current?.close()
         var self: SshSession? = null
         val next = SshSession(cfg, secrets, HostKeys(knownHosts), listenerFor { self })
@@ -95,7 +98,7 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
             next.close()
             if (session === next) session = null
         }
-        syncService()
+        sync()
         return r
     }
 
@@ -125,20 +128,29 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
         answerHostKey(false)
         session?.close()
         session = null
-        syncService()
+        sync()
     }
 
     fun setBackground(b: Background) {
         val changed = b.sessions != background.sessions
         background = b
-        syncService()
+        sync()
         if (changed) onChange?.invoke()
     }
 
-    /** Foreground-сервис — пока есть соединение (или оно переподключается) и включено «Держать связь в фоне». */
-    private fun syncService() {
+    /**
+     * Пока есть соединение (или оно переподключается): слежение за сетью и, если включено «Держать связь в фоне», —
+     * foreground-сервис. Переподключение остановлено — ни того ни другого: «Переподключение…» не висит.
+     */
+    @Synchronized private fun sync() {
         val ctx = appCtx ?: return
-        if (session != null && background.keepAlive) runCatching { SshService.start(ctx) } else SshService.stop(ctx)
+        val live = session != null && !failed
+        if (live && watch == null) watch = NetworkWatch { forceReconnect() }.also { it.register(ctx) }
+        if (!live && watch != null) {
+            watch?.unregister(ctx)
+            watch = null
+        }
+        if (live && background.keepAlive) runCatching { SshService.start(ctx) } else SshService.stop(ctx)
     }
 
     /** Ключ проверяется при импорте: тип, нужна ли парольная фраза. Ответ — как Result интерфейса. */

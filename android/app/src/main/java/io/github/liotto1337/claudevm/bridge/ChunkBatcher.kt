@@ -20,6 +20,8 @@ class ChunkBatcher(
 
     private var items = JSONArray()
     private var scheduled = false
+    /** Забрать накопленное и отправить — одно действие: иначе «closed» мог бы уйти, пока таймер ещё отправляет последнюю пачку */
+    private val sending = Any()
 
     @Synchronized
     fun add(ch: Int, seq: Int, kind: String, bytes: ByteArray) {
@@ -30,7 +32,7 @@ class ChunkBatcher(
         }
     }
 
-    fun flush() {
+    fun flush() = synchronized(sending) {
         val out = synchronized(this) {
             scheduled = false
             items.also { items = JSONArray() }
@@ -38,10 +40,13 @@ class ChunkBatcher(
         if (out.length() > 0) sink.emit("chunks", JSONObject().put("items", out))
     }
 
-    fun closed(ch: Int) {
+    /** Отправить событие после всех накопленных пачек. */
+    fun emitAfterChunks(event: String, data: JSONObject) = synchronized(sending) {
         flush()
-        sink.emit("closed", JSONObject().put("ch", ch))
+        sink.emit(event, data)
     }
+
+    fun closed(ch: Int) = emitAfterChunks("closed", JSONObject().put("ch", ch))
 
     private companion object {
         val timer = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "cvg-chunks").apply { isDaemon = true } }

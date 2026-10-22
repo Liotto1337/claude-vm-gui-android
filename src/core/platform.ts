@@ -25,6 +25,8 @@ export interface Platform {
   onBack?(cb: () => void): () => void;
   /** Свернуть приложение (Android) */
   minimize?(): void;
+  /** Приложение на экране или свёрнуто (Android: WebView в фоне остаётся «visible», document об этом не узнаёт) */
+  onVisibility?(cb: (visible: boolean) => void): () => void;
   /** Работа в фоне (Android): foreground-сервис, уведомления о сессиях, переход по уведомлению */
   background?: {
     set(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number }): void;

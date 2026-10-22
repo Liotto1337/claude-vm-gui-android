@@ -17,14 +17,18 @@ class SessionNotifier(
 
     private val last = mutableMapOf<String, NotifyDetector.State>()
 
-    /** Команда: для каждой сессии, где на переднем плане claude (или node), — маркер с именем и экран. */
+    /** Команда: для каждой сессии, где на переднем плане claude (или node), — маркер с именем и экран; в конце — END. */
     private val command: String
         get() = "$tmux ls -F '#{session_name}\t#{pane_current_command}' 2>/dev/null | " +
             "while IFS=\"\$(printf '\\t')\" read -r n c; do case \"\$c\" in claude|node) " +
-            "printf '\\0cvg:%s\\n' \"\$n\"; $tmux capture-pane -e -p -t \"=\$n:\" 2>/dev/null ;; esac; done"
+            "printf '\\0cvg:%s\\n' \"\$n\"; $tmux capture-pane -e -p -t \"=\$n:\" 2>/dev/null ;; esac; done; " +
+            "printf '\\0cvg-end\\n'"
 
     suspend fun tick() {
-        val out = exec(command).stdout
+        val full = exec(command).stdout
+        // Без END опрос оборвался (таймаут): каких-то сессий в выводе нет — не считаем их пропавшими
+        if (!full.endsWith(END)) return
+        val out = full.removeSuffix(END)
         val now = mutableMapOf<String, NotifyDetector.State>()
         val questions = mutableMapOf<String, String?>()
         for (part in out.split(MARK).drop(1)) {
@@ -47,5 +51,7 @@ class SessionNotifier(
     companion object {
         /** Начало блока сессии: нулевой байт в выводе capture-pane не встречается — текст экрана маркер не подделает */
         const val MARK = "\u0000cvg:"
+        /** Конец вывода опроса */
+        const val END = "\u0000cvg-end\n"
     }
 }

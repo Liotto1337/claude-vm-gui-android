@@ -25,3 +25,15 @@ test('настройки: «Держать связь в фоне» и «Уве�
     await app.close();
   }
 });
+
+test('поле SSH-ключа: клавиатура телефона не правит текст ключа (без заглавной буквы и автозамены)', async () => {
+  const { app, page } = await launchApp();
+  try {
+    const key = page.getByLabel('SSH-ключ (закрытый, OpenSSH или PEM)');
+    await expect(key).toHaveAttribute('autocapitalize', 'off');
+    await expect(key).toHaveAttribute('autocorrect', 'off');
+    await expect(key).toHaveAttribute('spellcheck', 'false');
+  } finally {
+    await app.close();
+  }
+});

@@ -5,6 +5,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 
 // org.json в JVM-тестах Android — заглушки; Robolectric даёт настоящий
 @RunWith(RobolectricTestRunner::class)
@@ -30,6 +33,24 @@ class ChunkBatcherTest {
         b.closed(3)
         assertEquals(listOf("chunks", "closed"), sent.map { it.first })
         assertEquals(3, sent[1].second.getInt("ch"))
+    }
+
+    @Test fun `closed не обгоняет пачку, которую в этот момент отправляет таймер`() {
+        val got = Collections.synchronizedList(mutableListOf<String>())
+        val sending = CountDownLatch(1)
+        val slow = ChunkBatcher(ChunkBatcher.Sink { e, _ ->
+            if (e == "chunks") {
+                sending.countDown()
+                Thread.sleep(300)
+            }
+            got.add(e)
+        }, schedule = {})
+        slow.add(5, 0, "data", byteArrayOf(1))
+        val timer = thread { slow.flush() }
+        sending.await()
+        slow.closed(5)
+        timer.join()
+        assertEquals(listOf("chunks", "closed"), got)
     }
 
     @Test fun `пустой flush ничего не шлёт`() {

@@ -20,12 +20,18 @@ export function createApi(p: Platform): Api {
   const c = new AppController(p, emit, config);
   const layouts = new LayoutStore(p.prefs);
   const host = async () => (await config())?.host ?? '';
-  // Отложенная запись раскладки не должна теряться: страница скрылась (Android — приложение ушло в фон) или закрывается
+  // Страница скрылась или приложение свёрнуто (Android сообщает это через платформу): отложенная запись раскладки
+  // не должна теряться, а опросы по SSH встают до возвращения
+  const flush = () => void layouts.flush();
+  const setVisible = (visible: boolean) => {
+    if (!visible) flush();
+    c.setHidden(!visible);
+  };
   if (typeof document !== 'undefined') {
-    const flush = () => void layouts.flush();
     addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flush());
+    document.addEventListener('visibilitychange', () => setVisible(document.visibilityState !== 'hidden'));
   }
+  p.onVisibility?.(setVisible);
 
   return {
     config: {

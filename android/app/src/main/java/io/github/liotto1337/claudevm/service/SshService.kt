@@ -9,7 +9,6 @@ import android.os.IBinder
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.github.liotto1337.claudevm.bridge.SshHub
-import io.github.liotto1337.claudevm.net.NetworkWatch
 import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.notify.SessionNotifier
 import kotlinx.coroutines.CoroutineScope
@@ -23,12 +22,11 @@ import kotlinx.coroutines.launch
 
 /**
  * Foreground-сервис «Подключено к ВМ»: держит процесс (а с ним SshHub) живым, пока приложение свёрнуто,
- * переподключается при смене сети и раз в 5 с опрашивает сессии для уведомлений. Система его не перезапускает:
+ * и раз в 5 с опрашивает сессии для уведомлений. За сменой сети следит сам SshHub. Система его не перезапускает:
  * убитый процесс — это закрытое соединение, «Подключено» без процесса не висит.
  */
 class SshService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var watch: NetworkWatch? = null
     private var loop: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -49,7 +47,6 @@ class SshService : Service() {
         if (Build.VERSION.SDK_INT >= 34) startForeground(Notifications.ID_CONNECTION, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else startForeground(Notifications.ID_CONNECTION, n)
         hub.onChange = { refresh() }
-        if (watch == null) watch = NetworkWatch { hub.forceReconnect() }.also { it.register(this) }
         if (loop == null) loop = scope.launch { notifyLoop(hub) }
         return START_NOT_STICKY
     }
@@ -91,7 +88,6 @@ class SshService : Service() {
 
     override fun onDestroy() {
         loop?.cancel()
-        watch?.unregister(this)
         SshHub.get(this).onChange = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         NotificationManagerCompat.from(this).cancel(Notifications.ID_CONNECTION)

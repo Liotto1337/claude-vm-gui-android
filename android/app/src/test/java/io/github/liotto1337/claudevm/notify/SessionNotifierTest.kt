@@ -14,13 +14,15 @@ class SessionNotifierTest {
 
     /** Вывод команды опроса: сессии с claude — маркер и экран. */
     private var screens = mutableMapOf<String, String>()
+    /** Опрос оборвался по таймауту: вывод без конца */
+    private var partial = false
     private val posted = mutableListOf<Triple<String, SessionNotifier.Kind, String>>()
     private val cancelled = mutableListOf<String>()
     private val commands = mutableListOf<String>()
     private val notifier = SessionNotifier(
         exec = { cmd ->
             commands.add(cmd)
-            ExecResult(0, screens.entries.joinToString("") { (n, s) -> "${SessionNotifier.MARK}$n\n$s\n" }, "")
+            ExecResult(0, screens.entries.joinToString("") { (n, s) -> "${SessionNotifier.MARK}$n\n$s\n" } + if (partial) "" else SessionNotifier.END, "")
         },
         post = { s, k, t -> posted.add(Triple(s, k, t)) },
         cancel = { cancelled.add(it) },
@@ -59,6 +61,17 @@ class SessionNotifierTest {
         tick("a" to "busy.ans", "b" to "prompt-empty.ans")
         tick("a" to "prompt-empty.ans", "b" to "trust.ans")
         assertEquals(setOf("a" to SessionNotifier.Kind.FINISHED, "b" to SessionNotifier.Kind.WAITING), posted.map { it.first to it.second }.toSet())
+    }
+
+    @Test fun `оборванный вывод опроса не снимает уведомления и не сбивает состояния`() {
+        tick("a" to "busy.ans", "b" to "busy.ans")
+        partial = true
+        tick("a" to "prompt-empty.ans")
+        partial = false
+        assertEquals(emptyList<String>(), cancelled)
+        assertEquals(emptyList<Any>(), posted)
+        tick("a" to "prompt-empty.ans", "b" to "prompt-empty.ans")
+        assertEquals(setOf("a", "b"), posted.map { it.first }.toSet())
     }
 
     @Test fun `опрос одной командой, сервер tmux — из настроек`() {

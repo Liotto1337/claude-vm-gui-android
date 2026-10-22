@@ -16,6 +16,10 @@ export function longPress(el: HTMLElement, cb: (x: number, y: number) => void, o
     e.stopImmediatePropagation();
     e.preventDefault();
   };
+  // Клик после срабатывания может и не прийти: новое касание где угодно (палец того жеста уже прижат) — другой жест, его клик не трогаем
+  const anyDown = () => {
+    swallow = false;
+  };
   const cancel = () => {
     if (press) clearTimeout(press.timer);
     press = null;
@@ -40,6 +44,7 @@ export function longPress(el: HTMLElement, cb: (x: number, y: number) => void, o
     if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > slop) cancel();
   };
   clickTarget.addEventListener('click', click, true);
+  clickTarget.addEventListener('pointerdown', anyDown, true);
   el.addEventListener('pointerdown', down as EventListener);
   el.addEventListener('pointermove', move as EventListener);
   el.addEventListener('pointerup', cancel);
@@ -47,6 +52,7 @@ export function longPress(el: HTMLElement, cb: (x: number, y: number) => void, o
   return () => {
     cancel();
     clickTarget.removeEventListener('click', click, true);
+    clickTarget.removeEventListener('pointerdown', anyDown, true);
     el.removeEventListener('pointerdown', down as EventListener);
     el.removeEventListener('pointermove', move as EventListener);
     el.removeEventListener('pointerup', cancel);

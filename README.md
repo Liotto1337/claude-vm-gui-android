@@ -56,7 +56,7 @@ npm run test:smoke      # дымовой тест APK на эмуляторе
 npm run screenshots     # скриншоты для README
 ```
 
-Сборка APK требует JDK 21 и Android SDK (platform 36); окружение — `source scripts/android-env.sh`. Release-сборка подписывается ключом из переменных `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`; в GitHub Actions (`.github/workflows/android.yml`) — из секретов репозитория, тег `v*` создаёт релиз с APK.
+Сборка APK требует JDK 21 и Android SDK (platform 36); окружение — `source scripts/android-env.sh`. Release-сборка подписывается ключом из переменных `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`; в GitHub Actions (`.github/workflows/android.yml`) — из секретов репозитория, тег `v*` создаёт релиз с APK (без секретов подписи релиз не выпускается).
 
 Интеграционные, E2E- и часть JUnit-тестов запускаются на самой ВМ и подключаются к `127.0.0.1` ключом `~/.ssh/cvg_test_ed25519`, разрешённым в `authorized_keys` только с localhost. Без него они пропускаются. Вход по паролю проверяется с `CVG_TEST_SSH_USER` и `CVG_TEST_SSH_PASSWORD`. Тесты работают только с сессиями `cvg-test-*` и отдельными серверами tmux и не отправляют запросов к модели.
 

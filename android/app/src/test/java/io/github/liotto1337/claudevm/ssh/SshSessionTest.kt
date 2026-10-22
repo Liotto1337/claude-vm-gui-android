@@ -185,6 +185,16 @@ class SshSessionTest {
         assertEquals(progress.sorted(), progress)
     }
 
+    @Test fun `части картинки идут через один SFTP-клиент — новый не открывается на каждую`() = runBlocking {
+        val s = session(Recorder())
+        assertEquals(SshResult.Ok, s.connect(true))
+        val path = "/tmp/cvg-sftp-${System.nanoTime()}.bin"
+        for (i in 0 until 3) s.writeFile(path, ByteArray(1000) { i.toByte() }, offset = i * 1000L) {}
+        // sftp-server этого соединения — брат оболочки exec (оба — дети процесса sshd соединения)
+        assertEquals("1", s.exec("pgrep -c -P \$PPID -x sftp-server; rm -f $path").stdout.trim())
+        s.close()
+    }
+
     @Test fun `обрыв — lost, затем reconnected, команды снова работают`() = runBlocking {
         val rec = Recorder()
         val s = session(rec)
