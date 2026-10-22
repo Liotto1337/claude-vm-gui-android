@@ -131,7 +131,12 @@ export interface ChatEvent { session: string; reset: boolean; prepend: boolean; 
 export interface ScreenEvent { session: string; state: ScreenState; busy: boolean }
 
 /** Порядок, закрепление и группы сессий в сайдбаре (хранится локально, отдельно для каждой ВМ). */
-export interface SidebarLayout { v: 1; items: LayoutItem[] }
+export interface SidebarLayout {
+  v: 1;
+  items: LayoutItem[];
+  /** Android: сессии с отметкой «Отслеживать» — уведомления только от них */
+  watched?: string[];
+}
 export type LayoutItem =
   | { kind: 'session'; name: string; pinned?: boolean }
   | { kind: 'group'; id: string; name: string; pinned?: boolean; collapsed?: boolean; sessions: { name: string; pinned?: boolean }[] };

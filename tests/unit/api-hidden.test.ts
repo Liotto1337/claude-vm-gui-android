@@ -161,3 +161,14 @@ it('Android: обновления — релизы claude-vm-gui-android, про
   expect(prefs.data.get('dismissedUpdate')).toBe('9.9.9');
   await api.connection.disconnect();
 });
+
+it('Android: «Отслеживать» — список из раскладки уходит нативному опросу вместе с настройками фона', async () => {
+  const set = vi.fn();
+  const background = { set, onOpenSession: () => () => {}, sessionOpened: () => {}, requestNotifications: async () => true };
+  const { api } = await connected({ background });
+  await api.layout.save({ v: 1, items: [{ kind: 'session', name: 's1' }], watched: ['s1'] });
+  expect(set).toHaveBeenLastCalledWith(expect.objectContaining({ keepAlive: true, notifications: true, watched: ['s1'] }));
+  await api.layout.save({ v: 1, items: [{ kind: 'session', name: 's1' }] });
+  expect(set).toHaveBeenLastCalledWith(expect.objectContaining({ watched: [] }));
+  await api.connection.disconnect();
+});

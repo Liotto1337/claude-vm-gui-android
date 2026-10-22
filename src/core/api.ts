@@ -94,8 +94,15 @@ export function createApi(p: Platform): Api {
       },
     },
     layout: {
-      get: async () => layouts.get(await host()),
-      save: async (l) => layouts.save(await host(), l),
+      get: async () => {
+        const l = await layouts.get(await host());
+        c.setWatched(l.watched ?? []);
+        return l;
+      },
+      save: async (l) => {
+        c.setWatched(l.watched ?? []);
+        return layouts.save(await host(), l);
+      },
     },
     links: {
       // Ссылки из ленты — только http(s)

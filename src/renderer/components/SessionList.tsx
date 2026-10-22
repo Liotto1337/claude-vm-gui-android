@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { LayoutItem, SidebarLayout, TmuxSession } from '@shared/ipc';
 import {
-  createGroup, deleteGroup, move, moveToGroup, paginate, removeFromGroup, renameGroup, rowsOf, toggleCollapsed, togglePin,
+  createGroup, deleteGroup, move, moveToGroup, paginate, removeFromGroup, renameGroup, rowsOf, isWatched, toggleCollapsed, togglePin, toggleWatched,
   type ItemRef, type Pos, type Row,
 } from '@shared/layout';
 import { killSession, openSession, shortPath, updateLayout, useAppState } from '../state';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ContextMenu, type MenuEntry } from './ContextMenu';
 import { GroupNameDialog } from './GroupNameDialog';
-import { IconChevron, IconChevronLeft, IconChevronRight, IconClose, IconFolder, IconPin, IconPlus } from './icons';
+import { IconBell, IconChevron, IconChevronLeft, IconChevronRight, IconClose, IconFolder, IconPin, IconPlus } from './icons';
 import { longPress } from '../long-press';
 import { usePhone } from '../use-phone';
 import { applyDrop, dropEdge as edgeAt, groupById, groupIndex, rowKey, type Drop } from '../drop';
@@ -258,6 +258,12 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
     const groups = layout.items.filter((i): i is Group => i.kind === 'group' && i.id !== at?.group?.id);
     return [
       { label: at?.pinned ? 'Открепить' : 'Закрепить', icon: <IconPin size={14} />, onSelect: () => updateLayout((l) => togglePin(l, ref)) },
+      // Уведомления «ждёт ответа» — только от отмеченных сессий
+      {
+        label: isWatched(layout, ref.session) ? 'Не отслеживать' : 'Отслеживать',
+        icon: <IconBell size={14} />,
+        onSelect: () => updateLayout((l) => toggleWatched(l, ref.session)),
+      },
       {
         label: 'Переместить в группу',
         icon: <IconFolder />,
@@ -303,6 +309,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
             <span className={s.claudeRunning ? 'dot dot-claude' : 'dot dot-idle'} aria-hidden="true" />
             <span className="session-name ellipsis">{s.name}</span>
             {others > 0 ? <span className="tag">открыта в cmd</span> : !s.claudeRunning ? <span className="caption">{s.command}</span> : null}
+            {isWatched(layout, s.name) ? <span className="pin"><IconBell label="Отслеживается" /></span> : null}
             {pinned ? <span className="pin"><IconPin label="Закреплена" /></span> : null}
           </span>
           <span className="session-cwd ellipsis">{shortPath(s.cwd)}</span>

@@ -29,7 +29,8 @@ export interface Platform {
   onVisibility?(cb: (visible: boolean) => void): () => void;
   /** Работа в фоне (Android): foreground-сервис, уведомления о сессиях, переход по уведомлению */
   background?: {
-    set(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number }): void;
+    /** watched — сессии с отметкой «Отслеживать»: уведомления только от них */
+    set(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number; watched: string[] }): void;
     onOpenSession(cb: (name: string) => void): () => void;
     /** Сессию открыли в приложении — снять её уведомление */
     sessionOpened(name: string): void;

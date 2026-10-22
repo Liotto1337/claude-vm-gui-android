@@ -149,6 +149,7 @@ class VmBridgePlugin : Plugin() {
                 notifications = call.getBoolean("notifications", true) == true,
                 tmux = call.getString("tmux") ?: "tmux",
                 sessions = call.getInt("sessions") ?: 0,
+                watched = call.getArray("watched")?.toList<Any?>()?.filterIsInstance<String>()?.toSet() ?: emptySet(),
             ),
         )
         null

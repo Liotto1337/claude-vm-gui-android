@@ -258,9 +258,18 @@ export class AppController {
 
   private sessions = 0;
 
-  /** Настройки фона и число сессий — нативной стороне (foreground-сервис, уведомления). */
+  /** Настройки фона, число сессий и отслеживаемые сессии — нативной стороне (foreground-сервис, уведомления). */
   syncBackground(cfg: VmConfig): void {
-    this.platform.background?.set({ keepAlive: cfg.keepAlive, notifications: cfg.notifications, tmux: tmuxCmd(), sessions: this.sessions });
+    this.platform.background?.set({ keepAlive: cfg.keepAlive, notifications: cfg.notifications, tmux: tmuxCmd(), sessions: this.sessions, watched: this.watched });
+  }
+
+  private watched: string[] = [];
+
+  /** «Отслеживать» изменилось (раскладка сайдбара загружена или сохранена) */
+  setWatched(names: string[]): void {
+    if (names.length === this.watched.length && names.every((n, i) => n === this.watched[i])) return;
+    this.watched = [...names];
+    if (this.s) this.syncBackground(this.s.cfg);
   }
 
   /** «Отключиться»: сервисы и соединение. */

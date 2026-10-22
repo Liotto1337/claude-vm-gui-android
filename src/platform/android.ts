@@ -26,7 +26,7 @@ export interface VmBridgePlugin {
   checkTcp(o: { host: string; port: number }): Promise<{ ok: boolean; ms: number | null }>;
   secretsSave(o: { name: 'password' | 'key'; value: string | null; passphrase?: string }): Promise<{ ok: true; keyType?: string } | Fail>;
   secretsHas(o: { name: 'password' | 'key' }): Promise<{ value: 'yes' | 'no' | 'unreadable' }>;
-  setBackground(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number }): Promise<void>;
+  setBackground(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number; watched: string[] }): Promise<void>;
   clearNotification(o: { name: string }): Promise<void>;
   requestNotifications(): Promise<{ granted: boolean }>;
   addListener(event: string, cb: (data: never) => void): Promise<{ remove(): Promise<void> }>;

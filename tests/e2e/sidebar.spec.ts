@@ -356,3 +356,20 @@ test('«q у р» не обрезаются в строке сессии', async
     await app.close();
   }
 });
+
+test('«Отслеживать»: пункт меню, колокольчик в строке, подпись у уведомлений', async () => {
+  const { app, page } = await open();
+  try {
+    await item(page, 'cvg-test-b').click({ button: 'right' });
+    await menuItem(page, 'Отслеживать').click();
+    await expect(item(page, 'cvg-test-b').getByRole('img', { name: 'Отслеживается' })).toBeVisible();
+    await expect(item(page, 'cvg-test-a').getByRole('img', { name: 'Отслеживается' })).toHaveCount(0);
+    await item(page, 'cvg-test-b').click({ button: 'right' });
+    await menuItem(page, 'Не отслеживать').click();
+    await expect(item(page, 'cvg-test-b').getByRole('img', { name: 'Отслеживается' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Настройки подключения' }).click();
+    await expect(page.getByRole('dialog', { name: 'Настройки подключения' }).getByText('Только от сессий, отмеченных „Отслеживать“')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LayoutItem, SidebarLayout } from '../../src/shared/ipc';
 import {
   addNewToGroup, createGroup, deleteGroup, move, moveToGroup, normalize, paginate, reconcile, removeFromGroup, renameGroup, rowsOf,
-  toggleCollapsed, togglePin, validGroupName, type Row,
+  isWatched, toggleCollapsed, togglePin, toggleWatched, validGroupName, type Row,
 } from '../../src/shared/layout';
 
 const L = (items: LayoutItem[]): SidebarLayout => ({ v: 1, items });
@@ -165,4 +165,27 @@ describe('rowsOf и paginate', () => {
   it('строка выше доступной высоты всё равно попадает на страницу', () =>
     expect(paginate([{ kind: 'session', name: 'a', group: null }], H, 10)).toEqual([[{ kind: 'session', name: 'a', group: null }]]));
   it('пустой список — одна пустая страница', () => expect(paginate([], H, 100)).toEqual([[]]));
+});
+
+describe('«Отслеживать» (Android)', () => {
+  it('toggleWatched туда и обратно; по умолчанию никто не отслеживается', () => {
+    const l = L([s('a'), s('b')]);
+    expect(isWatched(l, 'a')).toBe(false);
+    const on = toggleWatched(l, 'a');
+    expect(on.watched).toEqual(['a']);
+    expect(isWatched(on, 'a')).toBe(true);
+    expect(isWatched(on, 'b')).toBe(false);
+    expect(toggleWatched(on, 'a').watched ?? []).toEqual([]);
+  });
+  it('удалённая или переименованная сессия выпадает из списка', () => {
+    const l = { ...L([s('a'), s('b')]), watched: ['a', 'b'] };
+    expect(reconcile(l, ['b', 'c']).watched).toEqual(['b']);
+  });
+  it('перестановки и закрепление список не теряют', () => {
+    const l = { ...L([s('a'), s('b')]), watched: ['b'] };
+    expect(togglePin(l, { session: 'a' }).watched).toEqual(['b']);
+    expect(move(l, { session: 'b' }, { group: null, index: 0 }).watched).toEqual(['b']);
+  });
+  it('normalize: только строки, без повторов', () =>
+    expect(normalize({ v: 1, items: [], watched: ['a', 5, 'a', '', 'b'] }).watched).toEqual(['a', 'b']));
 });

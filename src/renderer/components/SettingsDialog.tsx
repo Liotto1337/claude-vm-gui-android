@@ -163,7 +163,7 @@ export function SettingsDialog({ onClose }: { onClose?: () => void }) {
           {notifyDenied ? (
             <span className="hint hint-error">Уведомления запрещены в настройках Android — разрешите их там и включите снова</span>
           ) : (
-            <span className="hint">«Claude закончил» и «Claude ждёт ответа», пока приложение свёрнуто</span>
+            <span className="hint">«Claude закончил» и «Claude ждёт ответа», пока приложение свёрнуто. Только от сессий, отмеченных „Отслеживать“</span>
           )}
         </div>
         <div className="field">

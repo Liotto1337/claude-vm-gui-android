@@ -16,6 +16,7 @@ const MAX_GROUP_NAME = 40;
 const clone = (l: SidebarLayout): SidebarLayout => ({
   v: 1,
   items: l.items.map((i) => (i.kind === 'group' ? { ...i, sessions: i.sessions.map((m) => ({ ...m })) } : { ...i })),
+  ...(l.watched?.length ? { watched: [...l.watched] } : {}),
 });
 const pinnedFirst = <T extends { pinned?: boolean }>(xs: T[]): T[] => [...xs.filter((x) => x.pinned), ...xs.filter((x) => !x.pinned)];
 const pinnedCount = (xs: { pinned?: boolean }[]) => xs.filter((x) => x.pinned).length;
@@ -48,7 +49,7 @@ export function validGroupName(s: string): string | null {
 
 /** Раскладка из файла: всё непонятное отбрасывается, дубликаты убираются, инвариант восстанавливается. */
 export function normalize(raw: unknown): SidebarLayout {
-  const r = raw as { items?: unknown } | null;
+  const r = raw as { items?: unknown; watched?: unknown } | null;
   if (!r || typeof r !== 'object' || !Array.isArray(r.items)) return { v: 1, items: [] };
   const seen = new Set<string>();
   const groupIds = new Set<string>();
@@ -74,7 +75,8 @@ export function normalize(raw: unknown): SidebarLayout {
       items.push(g);
     }
   }
-  return { v: 1, items: pinnedFirst(items) };
+  const watched = Array.isArray(r.watched) ? [...new Set(r.watched.filter((x): x is string => typeof x === 'string' && x !== ''))] : [];
+  return { v: 1, items: pinnedFirst(items), ...(watched.length ? { watched } : {}) };
 }
 
 /** Сверка со списком tmux: исчезнувшие убираются, новые — первыми среди незакреплённых верхнего уровня. */
@@ -90,6 +92,18 @@ export function reconcile(l: SidebarLayout, names: string[]): SidebarLayout {
   }
   const fresh = names.filter((x) => !known.has(x)).map((name): LayoutItem => ({ kind: 'session', name }));
   out.items.splice(pinnedCount(out.items), 0, ...fresh);
+  // Сессии больше нет — и отслеживать нечего
+  if (out.watched) out.watched = out.watched.filter((x) => live.has(x));
+  return out;
+}
+
+export const isWatched = (l: SidebarLayout, name: string): boolean => !!l.watched?.includes(name);
+
+/** «Отслеживать» / «Не отслеживать» (Android): уведомления «ждёт ответа» приходят только от отмеченных сессий. */
+export function toggleWatched(l: SidebarLayout, name: string): SidebarLayout {
+  const out = clone(l);
+  const list = out.watched ?? [];
+  out.watched = list.includes(name) ? list.filter((x) => x !== name) : [...list, name];
   return out;
 }
 

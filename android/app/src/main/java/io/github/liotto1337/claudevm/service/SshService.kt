@@ -78,6 +78,7 @@ class SshService : Service() {
         post = { s, k, t -> Notifications.postSession(this, s, k, t) },
         cancel = { Notifications.cancelSession(this, it) },
         tmux = tmux,
+        watched = { hub.background.watched },
     )
 
     /** Приложение смахнули из недавних — пользователь его закрыл: соединение тоже. */

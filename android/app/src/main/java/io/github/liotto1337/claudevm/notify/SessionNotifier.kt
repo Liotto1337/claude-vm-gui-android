@@ -6,12 +6,14 @@ import io.github.liotto1337.claudevm.ssh.ExecResult
  * Опрос сессий с claude, пока приложение свёрнуто: одна команда по SSH на все сессии.
  * Уведомления — по переходам: работал → поле ввода («Claude закончил»), не меню → меню («ждёт ответа» + вопрос).
  * Первая выборка сессии ничего не шлёт: о том, что было до сворачивания, не сообщаем.
+ * Уведомления — только о сессиях с отметкой «Отслеживать» (watched); пустой список — опроса нет вовсе.
  */
 class SessionNotifier(
     private val exec: suspend (String) -> ExecResult,
     private val post: (session: String, kind: Kind, text: String) -> Unit,
     private val cancel: (session: String) -> Unit,
     private val tmux: String = "tmux",
+    private val watched: () -> Set<String> = { emptySet() },
 ) {
     enum class Kind { FINISHED, WAITING }
 
@@ -25,6 +27,13 @@ class SessionNotifier(
             "printf '\\0cvg-end\\n'"
 
     suspend fun tick() {
+        val watch = watched()
+        // Отметку сняли — уведомление больше не нужно, и следить за сессией тоже
+        for (gone in last.keys - watch) {
+            cancel(gone)
+            last.remove(gone)
+        }
+        if (watch.isEmpty()) return
         val full = exec(command).stdout
         // Без END опрос оборвался (таймаут): каких-то сессий в выводе нет — не считаем их пропавшими
         if (!full.endsWith(END)) return
@@ -33,6 +42,7 @@ class SessionNotifier(
         val questions = mutableMapOf<String, String?>()
         for (part in out.split(MARK).drop(1)) {
             val name = part.substringBefore('\n')
+            if (name !in watch) continue
             val screen = part.substringAfter('\n', "")
             now[name] = NotifyDetector.state(screen)
             questions[name] = NotifyDetector.question(screen)

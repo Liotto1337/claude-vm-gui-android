@@ -77,6 +77,12 @@ export const IconPin = ({ label, size = 13 }: { label?: string; size?: number })
     <path d="M12 15v5" />
   </svg>
 );
+export const IconBell = ({ label, size = 13 }: { label?: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} strokeWidth="2" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
+    <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+    <path d="M10 20.5a2 2 0 0 0 4 0" />
+  </svg>
+);
 export const IconChevronRight = ({ size = 12 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...base} strokeWidth="2.2" aria-hidden="true">
     <path d="M9 6l6 6-6 6" />

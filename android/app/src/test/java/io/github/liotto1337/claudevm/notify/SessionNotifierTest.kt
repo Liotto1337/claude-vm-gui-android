@@ -19,6 +19,8 @@ class SessionNotifierTest {
     private val posted = mutableListOf<Triple<String, SessionNotifier.Kind, String>>()
     private val cancelled = mutableListOf<String>()
     private val commands = mutableListOf<String>()
+    /** Отслеживаемые сессии; по умолчанию — все, что встречаются в тестах до «Отслеживать» */
+    private var watched: Set<String> = setOf("w", "a", "b")
     private val notifier = SessionNotifier(
         exec = { cmd ->
             commands.add(cmd)
@@ -26,6 +28,7 @@ class SessionNotifierTest {
         },
         post = { s, k, t -> posted.add(Triple(s, k, t)) },
         cancel = { cancelled.add(it) },
+        watched = { watched },
     )
     private fun tick(vararg s: Pair<String, String>) = runBlocking {
         screens = s.associate { (n, f) -> n to screen(f) }.toMutableMap()
@@ -75,7 +78,7 @@ class SessionNotifierTest {
     }
 
     @Test fun `опрос одной командой, сервер tmux — из настроек`() {
-        val n = SessionNotifier(exec = { commands.add(it); ExecResult(0, "", "") }, post = { _, _, _ -> }, cancel = {}, tmux = "tmux -L cvg-smoke")
+        val n = SessionNotifier(exec = { commands.add(it); ExecResult(0, "", "") }, post = { _, _, _ -> }, cancel = {}, tmux = "tmux -L cvg-smoke", watched = { setOf("w") })
         runBlocking { n.tick() }
         assertEquals(1, commands.size)
         assertTrue(commands[0], commands[0].contains("tmux -L cvg-smoke ls -F"))
@@ -88,5 +91,29 @@ class SessionNotifierTest {
         screens = mutableMapOf("w" to screen("prompt-empty.ans"))
         runBlocking { notifier.tick() }
         assertEquals(listOf("w"), posted.map { it.first })
+    }
+
+    @Test fun `«Отслеживать» — уведомление только от отмеченной сессии`() {
+        watched = setOf("on")
+        tick("on" to "busy.ans", "off" to "busy.ans")
+        tick("on" to "prompt-empty.ans", "off" to "prompt-empty.ans")
+        assertEquals(listOf(Triple("on", SessionNotifier.Kind.FINISHED, "Claude закончил")), posted)
+    }
+
+    @Test fun `ничего не отслеживается — опроса по SSH нет вовсе`() {
+        watched = emptySet()
+        tick("w" to "busy.ans")
+        tick("w" to "prompt-empty.ans")
+        assertEquals(emptyList<String>(), commands)
+        assertEquals(emptyList<Any>(), posted)
+    }
+
+    @Test fun `отметку сняли — уведомление о сессии снимается`() {
+        watched = setOf("w")
+        tick("w" to "busy.ans")
+        watched = emptySet()
+        tick("w" to "prompt-empty.ans")
+        assertEquals(listOf("w"), cancelled)
+        assertEquals(emptyList<Any>(), posted)
     }
 }

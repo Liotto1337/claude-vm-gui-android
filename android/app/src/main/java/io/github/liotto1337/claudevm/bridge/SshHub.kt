@@ -23,7 +23,14 @@ import java.io.File
  */
 class SshHub(private val secrets: SecretStore, private val knownHosts: File, private val appCtx: Context? = null) {
     /** Настройки фона из интерфейса: keepAlive — foreground-сервис, notifications — уведомления, tmux — команда tmux (тесты: свой сервер), sessions — сколько сессий в списке. */
-    data class Background(val keepAlive: Boolean = true, val notifications: Boolean = true, val tmux: String = "tmux", val sessions: Int = 0)
+    /** watched — сессии с отметкой «Отслеживать»: уведомления только от них */
+    data class Background(
+        val keepAlive: Boolean = true,
+        val notifications: Boolean = true,
+        val tmux: String = "tmux",
+        val sessions: Int = 0,
+        val watched: Set<String> = emptySet(),
+    )
 
     @Volatile var background = Background()
         private set
