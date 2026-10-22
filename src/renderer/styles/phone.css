@@ -73,3 +73,15 @@
 .sheet-title { margin: 0 4px 8px; font-family: var(--font-serif); font-size: 18px; font-weight: 500; }
 .sheet-section { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
 .sheet .choice-item { min-height: 48px; }
+
+/* Панель «Сервер» — во весь экран */
+@media (max-width: 839.98px) {
+  .server-layer { inset: 0; z-index: 22; }
+  .server-panel {
+    width: 100%;
+    border-left: none;
+    padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  .server-head { align-items: center; }
+  .server-facts { grid-template-columns: auto 1fr; }
+}

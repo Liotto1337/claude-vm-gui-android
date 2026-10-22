@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { formatBytes, formatRate, formatUptime } from '@shared/metrics-parse';
 import { plural } from '@shared/plural';
 import { setServerOpen, useAppState } from '../state';
-import { IconClose } from './icons';
+import { IconChevronLeft, IconClose } from './icons';
+import { usePhone } from '../use-phone';
 import { Sparkline } from './Sparkline';
 
 const pct = (used: number, total: number) => (total > 0 ? Math.round((used / total) * 100) : 0);
@@ -40,20 +41,29 @@ export function ServerPanel() {
   const tx = metrics.map((m) => m.net?.txRate ?? 0);
   const stale = metricsErrorAt ? Math.max(1, Math.round((now - metricsErrorAt) / 1000)) : null;
 
+  // Телефон: экран поверх сессии с «Назад» слева, блоки — в одну колонку
+  const phone = usePhone();
   return (
     <div className="server-layer" onKeyDown={(e) => e.key === 'Escape' && setServerOpen(false)}>
       <div className="server-overlay" onClick={() => setServerOpen(false)} />
       <aside role="dialog" aria-modal="true" aria-label="Сервер" className="server-panel">
         <div className="server-head">
+          {phone ? (
+            <button type="button" className="icon-btn" aria-label="Назад" onClick={() => setServerOpen(false)}>
+              <IconChevronLeft size={20} />
+            </button>
+          ) : null}
           <div className="server-title">
             <h2>Сервер</h2>
             <span className="caption">
               {systemInfo?.os ?? 'Linux'} · {stale ? <span className="text-warn">нет данных {stale} с</span> : 'обновляется каждые 2 с'}
             </span>
           </div>
-          <button ref={close} type="button" className="pager-btn" aria-label="Закрыть" onClick={() => setServerOpen(false)}>
-            <IconClose size={16} />
-          </button>
+          {phone ? null : (
+            <button ref={close} type="button" className="pager-btn" aria-label="Закрыть" onClick={() => setServerOpen(false)}>
+              <IconClose size={16} />
+            </button>
+          )}
         </div>
 
         <dl className="server-facts">
