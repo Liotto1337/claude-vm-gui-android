@@ -26,8 +26,21 @@ android {
             testLogging { events 'failed'; exceptionFormat 'full' }
         }
     }
+    // Подпись release — ключом из переменных окружения (в CI — из секретов репозитория); без них release не подписывается
+    def ks = System.getenv('ANDROID_KEYSTORE_FILE')
+    signingConfigs {
+        if (ks) {
+            release {
+                storeFile file(ks)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (ks) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -1,0 +1,73 @@
+name: Android
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Секреты нельзя проверить в if напрямую — через переменную задания
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - name: Типы
+        run: npm run typecheck
+      - name: Модульные тесты
+        run: npm test
+      - name: JUnit и Robolectric
+        # Тесты против sshd ВМ без тестового ключа пропускаются
+        run: cd android && ./gradlew testDebugUnitTest
+      - name: Ключ подписи
+        id: keystore
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "file=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+      - name: Сборка APK
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ steps.keystore.outputs.file }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          npm run android:web
+          npx cap sync android
+          cd android
+          VERSION=$(node -p "require('../package.json').version")
+          mkdir -p ../release
+          if [ -n "$ANDROID_KEYSTORE_FILE" ]; then
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "../release/claude-vm-$VERSION.apk"
+          else
+            # Без секретов — отладочная сборка (подписана отладочным ключом, для проверки)
+            ./gradlew assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "../release/claude-vm-$VERSION-debug.apk"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: claude-vm-android
+          path: release/*.apk
+          if-no-files-found: error
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release/*.apk
+          fail_on_unmatched_files: true
