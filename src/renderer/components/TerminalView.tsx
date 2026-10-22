@@ -137,6 +137,9 @@ export function TerminalView({ name, hidden = false }: { name: string; hidden?: 
     });
 
     const ro = new ResizeObserver(() => {
+      // Спрятан под лентой — размер PTY не трогаем: иначе открытая клавиатура телефона сжимает терминал до нескольких строк,
+      // и Claude Code перерисовывает в них меню (теряются заголовок и варианты). Подгонка — когда терминал снова виден
+      if (hiddenRef.current) return;
       fit.fit();
       api.term.resize(term.cols, term.rows);
     });

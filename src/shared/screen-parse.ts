@@ -141,6 +141,9 @@ export function parseMenu(plain: string): ParsedMenu | null {
   }
   const options: MenuOption[] = [];
   const notes: string[] = [];
+  // Ширина экрана — по самой длинной линии-разделителю: в узком окне (телефон) длинный вариант переносится на следующую строку
+  const width = Math.max(0, ...lines.filter((l) => isRule(l, '─╌')).map((l) => l.trim().length)) || Infinity;
+  let lastLineLen = 0;
   let i = start;
   for (; i < f; i++) {
     const l = lines[i];
@@ -152,7 +155,11 @@ export function parseMenu(plain: string): ParsedMenu | null {
       if (text.startsWith('…') || options.length === 0) notes.push(text);
       else {
         const o = options[options.length - 1];
-        o.description = o.description ? `${o.description} ${text}` : text;
+        // Первое слово не влезло в конец предыдущей строки — это перенос текста варианта, а не описание
+        const wrapped = !o.description && lastLineLen + 1 + text.split(/\s/)[0].length > width;
+        if (wrapped) o.label = `${o.label} ${text}`;
+        else o.description = o.description ? `${o.description} ${text}` : text;
+        lastLineLen = l.length;
       }
       continue;
     }
@@ -160,6 +167,7 @@ export function parseMenu(plain: string): ParsedMenu | null {
     const body = num ? num[2] : text;
     const [label, ...rest] = body.split(/\s{2,}/);
     options.push({ n: num ? Number(num[1]) : null, label: label.trim(), description: rest.join(' ').trim(), selected: l[c] === '❯' });
+    lastLineLen = l.length;
   }
   let trailing = 0;
   for (; i < f; i++) {

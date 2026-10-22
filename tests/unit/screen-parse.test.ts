@@ -63,11 +63,12 @@ describe('parseMenu', () => {
     expect(m.options.map((o) => o.n)).toEqual([1, 2, 3, 4]);
     expect(m.hint).toBe('Esc to cancel · Tab to amend');
   });
-  it('запрос на создание файла: перенос варианта в описание', () => {
+  it('запрос на создание файла: перенесённый текст варианта склеивается с ним', () => {
     const m = parseMenu(plain('permission-write'))!;
     expect(m.title).toBe('Create file');
     expect(m.options).toHaveLength(3);
-    expect(m.options[1].description).toContain('commands) for this session');
+    expect(m.options[1].label).toBe('Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session (shift+tab)');
+    expect(m.options[1].description).toBe('');
   });
   it('AskUserQuestion: вопрос, описания вариантов, вариант после линии', () => {
     const m = parseMenu(plain('ask'))!;

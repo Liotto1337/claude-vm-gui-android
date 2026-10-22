@@ -11,7 +11,8 @@ import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from '
 import { join } from 'node:path';
 
 const PASTE_MS = 250;
-const RULE = '─'.repeat(60);
+// Линии во всю ширину терминала, как у настоящего Claude Code (в узком окне телефона не переносятся)
+const rule = () => '─'.repeat(Math.max(10, process.stdout.columns || 60));
 const OPTIONS = ['Да', 'Да и не спрашивать', 'Нет'];
 const dir = process.env.CVG_CLAUDE_DIR;
 const sessionId = randomUUID();
@@ -60,14 +61,14 @@ function draw() {
   let out = '\x1b[H\x1b[2J';
   for (const h of history.slice(-10)) out += `${h}\r\n`;
   if (menu) {
-    out += `${RULE}\r\n Выбор\r\n Что сделать?\r\n`;
+    out += `${rule()}\r\n Выбор\r\n Что сделать?\r\n`;
     OPTIONS.forEach((o, i) => (out += ` ${i === menu.selected ? '❯' : ' '} ${i + 1}. ${o}\r\n`));
     out += ' Enter to confirm · Esc to cancel\r\n';
   } else {
     if (status) out += `✻ ${status}\r\n`;
-    out += `${RULE}\r\n`;
+    out += `${rule()}\r\n`;
     out += field ? `❯ ${field}\r\n` : `❯ \x1b[2mTry "fake"\x1b[0m\r\n`;
-    out += `${RULE}\r\n`;
+    out += `${rule()}\r\n`;
     out += `  ? for shortcuts · enter×${enters}${status ? ' · esc to interrupt' : ''}\r\n`;
   }
   process.stdout.write(out);
@@ -191,6 +192,7 @@ function onData(chunk) {
 process.stdin.setRawMode?.(true);
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', onData);
+process.stdout.on('resize', draw);
 process.stdout.write('\x1b[?2004h');
 if (dir && process.env.CVG_FAKE_SEED) {
   mkdirSync(join(dir, 'projects', slug), { recursive: true });

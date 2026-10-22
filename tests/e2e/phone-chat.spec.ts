@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig, type Launched } from './helpers';
 
@@ -27,6 +30,23 @@ async function openCat(): Promise<Launched> {
   await expect(l.page.getByRole('heading', { name: 'cvg-test-cat' })).toBeVisible();
   return l;
 }
+/** Фейковый claude с журналом (как в chat.spec): лента, «menu» — карточка из трёх вариантов. */
+async function openFake(viewport = PHONE.viewport): Promise<Launched> {
+  const claudeDir = mkdtempSync(join(tmpdir(), 'cvg-cd-'));
+  const fake = join(__dirname, '../fixtures/fake-claude.mjs');
+  tmux('new-session', '-d', '-s', 'cvg-test-claude', '-x', '60', '-y', '40', `CVG_CLAUDE_DIR=${claudeDir} node ${fake}`);
+  const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
+  const l = await launchApp(
+    { CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: trustedKnownHosts(), CVG_TMUX_SOCKET: SOCK, CVG_CLAUDE_DIR: claudeDir },
+    { viewport, mobile: true },
+  );
+  await l.page.getByRole('navigation', { name: 'Сессии' }).getByRole('button', { name: /^cvg-test-claude/ }).tap({ timeout: 20_000 });
+  await expect(feed(l.page)).toBeVisible({ timeout: 15_000 });
+  return l;
+}
+const feed = (page: Page) => page.getByRole('region', { name: 'Переписка' });
+const composer = (page: Page) => page.getByRole('textbox', { name: 'Сообщение для Claude' });
+const card = (page: Page) => page.getByRole('group', { name: 'Выбор' });
 const pane = () => tmux('capture-pane', '-p', '-t', '=cvg-test-cat:');
 const sheet = (page: Page) => page.getByRole('dialog', { name: 'Модель и effort' });
 
@@ -56,6 +76,71 @@ test('на телефоне нет отдельных меню «Модель» 
     await expect(page.getByRole('button', { name: 'Модель и effort' })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Effort/ })).toHaveCount(0);
     await expect(page.getByText('Ctrl+V или перетаскивание')).toBeHidden();
+  } finally {
+    await app.close();
+  }
+});
+
+test('отправка касанием «Отправить» — сообщение в ленте', async () => {
+  const { app, page } = await openFake();
+  try {
+    await composer(page).tap();
+    await composer(page).fill('с телефона');
+    await page.getByRole('button', { name: 'Отправить' }).tap();
+    await expect(feed(page).getByText('с телефона', { exact: true })).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test('карточка меню: варианты не ниже 48 px, касание выбирает', async () => {
+  const { app, page } = await openFake();
+  try {
+    await composer(page).fill('menu');
+    await page.getByRole('button', { name: 'Отправить' }).tap();
+    const options = card(page).getByRole('option');
+    await expect(options).toHaveCount(3, { timeout: 10_000 });
+    for (const box of await Promise.all((await options.all()).map((o) => o.boundingBox()))) expect(box!.height).toBeGreaterThanOrEqual(48);
+    await card(page).getByRole('option', { name: /Да и не спрашивать/ }).tap();
+    await expect(card(page)).toBeHidden({ timeout: 5000 });
+    await expect(feed(page).getByText('выбран 2')).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test('подсказки / открываются и выбираются касанием', async () => {
+  const { app, page } = await openFake();
+  try {
+    await composer(page).tap();
+    await composer(page).fill('/mo');
+    const option = page.getByRole('listbox', { name: 'Подсказки' }).getByRole('option', { name: /^\/model/ });
+    await option.tap({ timeout: 30_000 });
+    await expect(composer(page)).toHaveValue('/model ');
+  } finally {
+    await app.close();
+  }
+});
+
+test('маленький экран с клавиатурой (360×640 → 360×360): все варианты меню достижимы, поле ввода видно', async () => {
+  const { app, page } = await openFake({ width: 360, height: 640 });
+  try {
+    await composer(page).fill('menu');
+    await page.getByRole('button', { name: 'Отправить' }).tap();
+    await expect(card(page).getByRole('option')).toHaveCount(3, { timeout: 10_000 });
+    // Экранная клавиатура забирает низ окна (Keyboard resize: native)
+    await page.setViewportSize({ width: 360, height: 360 });
+    // Терминал спрятан под лентой — его размер не меняется, меню Claude Code не перерисовывается в несколько строк
+    await page.waitForTimeout(1500);
+    await expect(card(page).getByRole('option')).toHaveCount(3);
+    for (let i = 0; i < 3; i++) {
+      const o = card(page).getByRole('option').nth(i);
+      await o.scrollIntoViewIfNeeded();
+      await expect(o).toBeInViewport({ ratio: 1 });
+    }
+    const box = (await composer(page).boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(360);
   } finally {
     await app.close();
   }
