@@ -72,14 +72,15 @@ export class AppController {
     });
   termWrite = (data: string) => this.s?.term.write(data);
   termResize = (cols: number, rows: number) => this.s?.term.resize(cols, rows);
-  termSend = (text: string, paths: string[]) => this.need((s) => s.term.send(text, paths));
-  termSetModel = (v: string) => this.need((s) => s.term.setModel(v));
-  termSetEffort = (v: string) => this.need((s) => s.term.setEffort(v));
+  // session — откуда пришёл ввод: если тем временем открыли другую сессию, ничего не пишется (NO_SESSION)
+  termSend = (text: string, paths: string[], session?: string) => this.need((s) => s.term.send(text, paths, session));
+  termSetModel = (v: string, session?: string) => this.need((s) => s.term.setModel(v, session));
+  termSetEffort = (v: string, session?: string) => this.need((s) => s.term.setEffort(v, session));
 
   metricsSetActive = (fast: boolean) => this.s?.metrics.setActive(fast === true);
   metricsInfo = () => this.need((s) => s.metrics.info());
-  chatKey = (k: MenuKey) => this.need((s) => s.term.key(k));
-  chatTypeText = (t: string) => this.need((s) => s.term.typeText(t));
+  chatKey = (k: MenuKey, session?: string) => this.need((s) => s.term.key(k, session));
+  chatTypeText = (t: string, session?: string) => this.need((s) => s.term.typeText(t, session));
   chatLoadEarlier = () => this.need((s) => s.transcript.loadEarlier());
 
   hintsGet = (cwd: string) => this.need((s) => s.hints.get(cwd));

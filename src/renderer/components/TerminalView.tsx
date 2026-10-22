@@ -6,7 +6,7 @@ import type { ExitReason } from '@shared/ipc';
 import { parseOsc52 } from '@shared/osc52';
 import { ctrlKey } from '@shared/paste';
 import { api } from '../api';
-import { refreshSessions, useAppState } from '../state';
+import { noteTerminalInput, refreshSessions, useAppState } from '../state';
 import { muteDeviceAttributes } from '../terminal-reports';
 import { terminalTheme } from '../terminal-theme';
 import { FONT_DEFAULT, pinchFontSize, rowAt } from '../terminal-touch';
@@ -115,8 +115,12 @@ export function TerminalView({ name, hidden = false }: { name: string; hidden?: 
       if (ctrlRef.current) {
         armCtrl(false);
         const c = ctrlKey(d);
-        if (c) return api.term.write(c);
+        if (c) {
+          noteTerminalInput(name, c);
+          return api.term.write(c);
+        }
       }
+      noteTerminalInput(name, d);
       api.term.write(d);
     });
     void api.platform.pref('terminalFontSize').then((v) => {

@@ -133,7 +133,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
     const pendingId = addPending(session.name, text.trim(), ready.map((a) => a.remotePath!));
     setDraft(session.name, { text: '', attachments: [] });
     setTextAndCaret('', 0);
-    const r = await api.term.send(sent.text, ready.map((a) => a.remotePath!)).finally(() => {
+    const r = await api.term.send(sent.text, ready.map((a) => a.remotePath!), session.name).finally(() => {
       sending.current = false;
       setBusy(false);
     });
@@ -218,12 +218,12 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
   const modelChoices: Choice[] = models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }));
   const effortChoices: Choice[] = efforts.map((e) => ({ value: e, label: e }));
   const pickModel = (c: Choice) =>
-    void api.term.setModel(c.value).then((r) => {
+    void api.term.setModel(c.value, session.name).then((r) => {
       setSendError(r.ok ? null : r.error.message);
       if (r.ok) rememberChoice(session.name, { model: c.value, modelLabel: c.label });
     });
   const pickEffort = (c: Choice) =>
-    void api.term.setEffort(c.value).then((r) => {
+    void api.term.setEffort(c.value, session.name).then((r) => {
       setSendError(r.ok ? null : r.error.message);
       if (r.ok) rememberChoice(session.name, { effort: c.value });
     });
@@ -318,7 +318,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
               </>
             )}
             {chatMode && working && !menuOpen ? (
-              <button type="button" className="btn btn-sm" onClick={() => void api.chat.key('esc')}>Остановить · Esc</button>
+              <button type="button" className="btn btn-sm" onClick={() => void api.chat.key('esc', session.name)}>Остановить · Esc</button>
             ) : null}
             <button type="button" className="send-btn" aria-label="Отправить" disabled={!canSend} onClick={() => void send()}>
               <IconArrowUp />
