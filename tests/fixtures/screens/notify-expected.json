@@ -1,0 +1,30 @@
+{
+  "_": "Состояние экрана для уведомлений (menu — открыто меню Claude Code, busy — работает, idle — поле ввода, unknown — прочее) и вопрос меню. Общая таблица для Vitest (notifyState) и JUnit (NotifyDetector).",
+  "states": {
+    "ask.ans": "menu",
+    "busy.ans": "busy",
+    "config.ans": "unknown",
+    "image-pending.ans": "idle",
+    "model.ans": "menu",
+    "narrow-busy.ans": "busy",
+    "narrow-permission-bash.ans": "menu",
+    "narrow-prompt-empty.ans": "idle",
+    "narrow-prompt-text.ans": "idle",
+    "narrow-trust.ans": "menu",
+    "permission-bash.ans": "menu",
+    "permission-write.ans": "menu",
+    "prompt-empty.ans": "idle",
+    "prompt-text.ans": "idle",
+    "trust-yes.ans": "menu",
+    "trust.ans": "menu"
+  },
+  "questions": {
+    "ask.ans": "☐ Цвет",
+    "model.ans": "Select model",
+    "narrow-permission-bash.ans": "Bash command",
+    "narrow-trust.ans": "Accessing workspace:",
+    "permission-bash.ans": "Bash command",
+    "permission-write.ans": "Create file",
+    "trust.ans": "Accessing workspace:"
+  }
+}

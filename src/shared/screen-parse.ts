@@ -217,3 +217,27 @@ export function menuKeysFor(menu: ParsedMenu, index: number): MenuKey[] {
   const delta = index - sel;
   return [...Array<MenuKey>(Math.abs(delta)).fill(delta > 0 ? 'down' : 'up'), 'enter'];
 }
+
+/**
+ * Состояние для уведомлений в фоне. Та же логика перенесена на Kotlin (NotifyDetector.kt) — обе сверяются
+ * с таблицей tests/fixtures/screens/notify-expected.json. Меню — по широкому детектору dialogOpen.
+ */
+export function notifyState(screen: string): 'menu' | 'busy' | 'idle' | 'unknown' {
+  const plain = stripAnsi(screen);
+  if (menuFooterIndex(plain) >= 0) return 'menu';
+  if (inputText(screen) === null) return 'unknown';
+  return parseStatus(plain) ? 'busy' : 'idle';
+}
+
+/** Вопрос меню для уведомления: первая непустая строка под границей (`─` или `▔`) над выбранным вариантом. */
+export function notifyQuestion(screen: string): string | null {
+  const lines = stripAnsi(screen).split('\n');
+  const f = menuFooterIndex(lines.join('\n'));
+  if (f < 0) return null;
+  let s = f - 1;
+  while (s >= 0 && !/^\s*❯\s/.test(lines[s])) s--;
+  let r = s - 1;
+  while (r >= 0 && !isBoundary(lines[r])) r--;
+  const q = lines.slice(r + 1, s).find((l) => l.trim() !== '');
+  return q ? q.trim().slice(0, 120) : null;
+}
