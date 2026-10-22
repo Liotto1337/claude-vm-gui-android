@@ -16,7 +16,8 @@
     "android:web": "vite build --mode android && node scripts/check-no-devbridge.mjs dist",
     "android:build": "npm run android:web && bash -c '. scripts/android-env.sh && npx cap sync android && cd android && ./gradlew -q assembleDebug'",
     "android:run": "npm run android:web && bash -c '. scripts/android-env.sh && npx cap run android'",
-    "test:android": "bash -c '. scripts/android-env.sh && cd android && ./gradlew -q testDebugUnitTest'"
+    "test:android": "bash -c '. scripts/android-env.sh && cd android && ./gradlew -q testDebugUnitTest'",
+    "test:smoke": "scripts/smoke-android.sh"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

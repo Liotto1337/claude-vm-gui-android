@@ -228,9 +228,12 @@ export function openFromNotification(name: string): void {
 }
 
 export function openSession(name: string | null): void {
-  if (name !== state.current) setState({ current: name, viewOverride: null, picked: state.picked + 1 });
-  else if (name) setState({ picked: state.picked + 1 });
-  patchChat(name, () => ({ screen: null }));
+  if (name !== state.current) {
+    setState({ current: name, viewOverride: null, picked: state.picked + 1 });
+    // Другая сессия: терминал откроется заново, и наблюдение пришлёт свежий экран. Та же — не сбрасывать:
+    // наблюдение не перезапускается и шлёт события только при изменении, карточка меню пропала бы
+    patchChat(name, () => ({ screen: null }));
+  } else if (name) setState({ picked: state.picked + 1 });
   const cfg = state.config;
   if (cfg && name && cfg.lastSession !== name) {
     const next = { ...cfg, lastSession: name };

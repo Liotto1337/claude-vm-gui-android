@@ -42,6 +42,8 @@ class VmBridgePlugin : Plugin() {
     private fun openSessionFrom(intent: Intent) {
         val name = intent.getStringExtra(Notifications.EXTRA_SESSION) ?: return
         intent.removeExtra(Notifications.EXTRA_SESSION)
+        // Сессию открывают по её уведомлению — оно больше не нужно (и если сессия уже была открыта)
+        Notifications.cancelSession(context, name)
         // Слушатель в JS может ещё не подписаться — событие ждёт его
         notifyListeners("openSession", JSObject().put("name", name), true)
     }
