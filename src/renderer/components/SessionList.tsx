@@ -9,6 +9,8 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ContextMenu, type MenuEntry } from './ContextMenu';
 import { GroupNameDialog } from './GroupNameDialog';
 import { IconChevron, IconChevronLeft, IconChevronRight, IconClose, IconFolder, IconPin, IconPlus } from './icons';
+import { longPress } from '../long-press';
+import { usePhone } from '../use-phone';
 
 /** Высоты строк — как в app.css (.row-*): по ним список делится на страницы. */
 export const ROW_HEIGHTS = { section: 28, divider: 17, group: 34, session: 52 } as const;
@@ -19,7 +21,7 @@ const DND = 'application/x-cvg';
 type Group = Extract<LayoutItem, { kind: 'group' }>;
 type Drop = { key: string; edge: 'before' | 'after' | 'into' } | null;
 /** ref — сессия или группа; list — пустое место списка */
-type Menu = { x: number; y: number; ref: ItemRef | 'list' } | null;
+type Menu = { x: number; y: number; ref: ItemRef | 'list'; sheet?: boolean } | null;
 type Dialog =
   | { kind: 'new-group'; session?: string }
   | { kind: 'rename'; id: string; name: string }
@@ -48,6 +50,8 @@ const groupIndex = (l: SidebarLayout, id: string) => l.items.findIndex((i) => i.
 /** onNewSession — диалог новой сессии (group — сразу в эту группу). */
 export function SessionList({ onNewSession }: { onNewSession: (group?: string) => void }) {
   const { sessions, current, layout } = useAppState();
+  // Телефон: HTML5-перетаскивание на касаниях не работает и отменяет долгое нажатие — перенос ручкой (touch-drag)
+  const phone = usePhone();
   const byName = useMemo(() => new Map(sessions.map((s) => [s.name, s])), [sessions]);
   const live = useMemo(() => new Set(byName.keys()), [byName]);
   const rows = useMemo(() => rowsOf(layout, live), [layout, live]);
@@ -181,6 +185,17 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
     setMenu({ x: e.clientX, y: e.clientY, ref });
   };
 
+  // Долгое нажатие пальцем (телефон) — то же меню, что ПКМ, нижним листом. Цель — строка под пальцем или пустое место
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    return longPress(el, (x, y) => {
+      const key = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-key]')?.dataset.key;
+      const ref: ItemRef | 'list' = key?.startsWith('s:') ? { session: key.slice(2) } : key?.startsWith('g:') ? { group: key.slice(2) } : 'list';
+      setMenu({ x, y, ref, sheet: true });
+    });
+  }, []);
+
   // ── Меню ──
   const listItems: MenuEntry[] = [
     { label: 'Новая сессия…', icon: <IconPlus />, onSelect: () => onNewSession() },
@@ -249,7 +264,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
           type="button"
           className="session-item"
           data-key={rowKey(r)}
-          draggable
+          draggable={!phone}
           aria-current={current === s.name ? 'page' : undefined}
           onClick={() => openSession(s.name)}
           onContextMenu={(e) => onContext(e, ref)}
@@ -279,7 +294,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
           type="button"
           className="group-header"
           data-key={r.continued ? undefined : rowKey(r)}
-          draggable
+          draggable={!phone}
           aria-expanded={!g.collapsed}
           aria-label={`Группа ${g.name}, сессий: ${count}${g.pinned ? ', закреплена' : ''}${r.continued ? ', продолжение' : ''}`}
           onClick={() => updateLayout((l) => toggleCollapsed(l, g.id))}
@@ -342,6 +357,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
           y={menu.y}
           items={menuRef === 'list' ? listItems : menuItems(menuRef)}
           onClose={() => setMenu(null)}
+          variant={menu.sheet ? 'sheet' : 'popup'}
         />
       ) : null}
 

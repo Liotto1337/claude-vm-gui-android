@@ -1,4 +1,5 @@
 import { useRef, type ReactNode, type TouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useBack } from '../back-stack';
 
 /** Насколько протянуть лист вниз, чтобы он закрылся. */
@@ -29,7 +30,8 @@ export function BottomSheet({ open, title, onClose, children }: { open: boolean;
     if (dy > CLOSE_DRAG) onClose();
   };
 
-  return (
+  // Портал в body: лист из выдвижной панели не должен зависеть от её положения и видимости
+  return createPortal(
     <div className="sheet-scrim" onClick={onClose}>
       <div
         ref={sheet}
@@ -46,6 +48,7 @@ export function BottomSheet({ open, title, onClose, children }: { open: boolean;
         <h2 className="sheet-title">{title}</h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

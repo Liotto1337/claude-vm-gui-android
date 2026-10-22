@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { IconChevronRight } from './icons';
+import { BottomSheet } from './BottomSheet';
+import { IconChevronLeft, IconChevronRight } from './icons';
 import { useBack } from '../back-stack';
 
 export interface MenuEntry {
@@ -12,8 +13,16 @@ export interface MenuEntry {
   submenu?: MenuEntry[];
 }
 
-/** Меню по ПКМ / Shift+F10: стрелки, Enter, → открывает подменю, ← и Esc закрывают. */
-export function ContextMenu(props: { label: string; x: number; y: number; items: MenuEntry[]; onClose: () => void }) {
+/**
+ * Меню по ПКМ / Shift+F10: стрелки, Enter, → открывает подменю, ← и Esc закрывают.
+ * variant 'sheet' (телефон, долгое нажатие) — нижним листом; подменю открывается внутри листа со строкой «‹ Назад».
+ */
+export function ContextMenu(props: { label: string; x: number; y: number; items: MenuEntry[]; onClose: () => void; variant?: 'popup' | 'sheet' }) {
+  if (props.variant === 'sheet') return <SheetMenu label={props.label} items={props.items} onClose={props.onClose} />;
+  return <PopupMenu {...props} />;
+}
+
+function PopupMenu(props: { label: string; x: number; y: number; items: MenuEntry[]; onClose: () => void }) {
   useBack(true, props.onClose);
   const root = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<{ index: number; focus: boolean } | null>(null);
@@ -129,5 +138,48 @@ function SubMenu(props: { label: string; focus: boolean; children: ReactNode; on
     <div ref={ref} role="menu" aria-label={props.label} className="popup ctx-menu ctx-sub" onKeyDown={props.onKeyDown}>
       {props.children}
     </div>
+  );
+}
+
+/** Меню нижним листом: подменю — переход внутри листа. */
+function SheetMenu(props: { label: string; items: MenuEntry[]; onClose: () => void }) {
+  const [sub, setSub] = useState<number | null>(null);
+  const entries = sub === null ? props.items : (props.items[sub]?.submenu ?? []);
+  const pick = (e: MenuEntry, i: number) => {
+    if (e.disabled) return;
+    if (sub === null && e.submenu) return setSub(i);
+    props.onClose();
+    e.onSelect?.();
+  };
+  return (
+    <BottomSheet open title={props.label} onClose={props.onClose}>
+      <div role="menu" aria-label={sub === null ? props.label : props.items[sub].label} className="sheet-section">
+        {sub !== null ? (
+          <button type="button" role="menuitem" aria-label="Назад" className="ctx-item" onClick={() => setSub(null)}>
+            <IconChevronLeft />
+            <span className="grow">{props.items[sub].label}</span>
+          </button>
+        ) : null}
+        {entries.map((e, i) =>
+          e.separator ? (
+            <div key={`sep-${i}`} role="separator" className="ctx-sep" />
+          ) : (
+            <button
+              key={`${i}-${e.label}`}
+              type="button"
+              role="menuitem"
+              disabled={e.disabled}
+              aria-haspopup={e.submenu ? 'menu' : undefined}
+              className={e.danger ? 'ctx-item ctx-danger' : 'ctx-item'}
+              onClick={() => pick(e, i)}
+            >
+              {e.icon ?? <span className="ctx-icon" aria-hidden="true" />}
+              <span className="grow">{e.label}</span>
+              {e.submenu ? <IconChevronRight /> : null}
+            </button>
+          ),
+        )}
+      </div>
+    </BottomSheet>
   );
 }
