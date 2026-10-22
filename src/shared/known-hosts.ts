@@ -46,6 +46,17 @@ export function knownHostsLine(host: string, port: number, keyType: string, key:
   return `${hostPattern(host, port)} ${keyType} ${key.toString('base64')}`;
 }
 
+/** known_hosts без записей хоста (после законной смены ключа сервера); комментарии и чужие записи остаются. */
+export function removeHost(text: string, host: string, port: number): string {
+  return text
+    .split(/\r?\n/)
+    .filter((raw) => {
+      const line = raw.trim();
+      return line === '' || line.startsWith('#') || line.startsWith('@') || !hostMatches(line.split(/\s+/)[0], host, port);
+    })
+    .join('\n');
+}
+
 /** Типы ключей, уже записанные для хоста в known_hosts. */
 export function knownTypesFor(text: string, host: string, port: number): string[] {
   const types = new Set<string>();

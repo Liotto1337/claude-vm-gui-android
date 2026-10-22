@@ -13,6 +13,7 @@ import android.content.Intent
 import android.os.Build
 import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.bridge.ChunkBatcher
+import io.github.liotto1337.claudevm.bridge.SerialQueue
 import io.github.liotto1337.claudevm.bridge.SshHub
 import io.github.liotto1337.claudevm.ssh.NotConnectedException
 import io.github.liotto1337.claudevm.ssh.SshConfig
@@ -35,6 +36,9 @@ class VmBridgePlugin : Plugin() {
     override fun load() {
         hub = SshHub.get(context)
         hub.sink = sink
+        // Новый WebView (пересоздание Activity, смена шрифта, падение рендерера): соединение переиспользуется,
+        // а PTY и `tail -F` прежнего интерфейса никто уже не закроет — закрываем сами
+        hub.closeAllChannels()
         // Приложение открыто касанием уведомления о сессии (холодный старт)
         activity?.intent?.let { openSessionFrom(it) }
     }
@@ -81,6 +85,20 @@ class VmBridgePlugin : Plugin() {
         }
     }
 
+    // Операции с каналами — строго по очереди: иначе нажатия в терминале могли бы переставиться
+    private val ordered = SerialQueue(scope)
+
+    private fun runOrdered(call: PluginCall, block: suspend () -> JSObject?) =
+        ordered.submit {
+            try {
+                call.resolve(block() ?: JSObject())
+            } catch (e: NotConnectedException) {
+                call.reject("NOT_CONNECTED", "NOT_CONNECTED")
+            } catch (e: Exception) {
+                call.reject(e.message ?: e.javaClass.simpleName, "NOT_CONNECTED")
+            }
+        }
+
     private fun PluginCall.ch(): Int = getInt("ch") ?: -1
 
     @PluginMethod fun connect(call: PluginCall) = run(call) {
@@ -100,15 +118,15 @@ class VmBridgePlugin : Plugin() {
         JSObject().put("code", r.code).put("stdout", r.stdout).put("stderr", r.stderr)
     }
 
-    @PluginMethod fun openChannel(call: PluginCall) = run(call) {
+    @PluginMethod fun openChannel(call: PluginCall) = runOrdered(call) {
         val pty = call.getObject("pty")?.let { (it.getInteger("cols") ?: 80) to (it.getInteger("rows") ?: 24) }
         JSObject().put("ch", hub.openChannel(call.getString("cmd") ?: "", pty))
     }
 
-    @PluginMethod fun write(call: PluginCall) = run(call) { hub.write(call.ch(), (call.getString("data") ?: "").toByteArray()); null }
-    @PluginMethod fun end(call: PluginCall) = run(call) { hub.end(call.ch()); null }
-    @PluginMethod fun closeChannel(call: PluginCall) = run(call) { hub.closeChannel(call.ch()); null }
-    @PluginMethod fun resize(call: PluginCall) = run(call) { hub.resize(call.ch(), call.getInt("cols") ?: 80, call.getInt("rows") ?: 24); null }
+    @PluginMethod fun write(call: PluginCall) = runOrdered(call) { hub.write(call.ch(), (call.getString("data") ?: "").toByteArray()); null }
+    @PluginMethod fun end(call: PluginCall) = runOrdered(call) { hub.end(call.ch()); null }
+    @PluginMethod fun closeChannel(call: PluginCall) = runOrdered(call) { hub.closeChannel(call.ch()); null }
+    @PluginMethod fun resize(call: PluginCall) = runOrdered(call) { hub.resize(call.ch(), call.getInt("cols") ?: 80, call.getInt("rows") ?: 24); null }
 
     @PluginMethod fun writeFile(call: PluginCall) = run(call) {
         hub.writeFile(call.getString("path") ?: "", Base64.getDecoder().decode(call.getString("b64") ?: ""), call.getLong("offset") ?: 0)
@@ -116,6 +134,11 @@ class VmBridgePlugin : Plugin() {
     }
 
     @PluginMethod fun answerHostKey(call: PluginCall) = run(call) { hub.answerHostKey(call.getBoolean("trust", false) == true); null }
+
+    @PluginMethod fun forgetHostKey(call: PluginCall) = run(call) {
+        hub.forgetHostKey(call.getString("host") ?: "", call.getInt("port") ?: 22)
+        null
+    }
 
     @PluginMethod fun checkTcp(call: PluginCall) = run(call) {
         val ms = SshSession.checkTcp(call.getString("host") ?: "", call.getInt("port") ?: 22)

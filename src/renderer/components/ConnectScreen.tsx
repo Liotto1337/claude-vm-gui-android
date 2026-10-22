@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import type { PreflightEvent, PreflightStep } from '@shared/ipc';
 import { connect, displayHost, openSettings, useAppState } from '../state';
 import { api } from '../api';
 import { IconCheck, IconCross, IconSpinner, IconWarn } from './icons';
+import { ConfirmDialog } from './ConfirmDialog';
 import { Logo } from './Logo';
 
 function StepIcon({ e }: { e?: PreflightEvent }) {
@@ -14,6 +16,8 @@ function StepIcon({ e }: { e?: PreflightEvent }) {
 
 export function ConnectScreen() {
   const { config, preflight, connectError } = useAppState();
+  // Ключ сервера сменился: забыть сохранённый — только с явным предупреждением о подмене
+  const [forget, setForget] = useState(false);
   const port = config?.port ?? 22;
   const steps: { step: PreflightStep; label: string }[] = [
     { step: 'tcp', label: `TCP, порт ${port}` },
@@ -52,6 +56,9 @@ export function ConnectScreen() {
         {connectError ? (
           <div className="row gap-8">
             <button type="button" className="btn btn-dark" onClick={() => void connect()}>Повторить</button>
+            {connectError.code === 'HOSTKEY_MISMATCH' ? (
+              <button type="button" className="btn" onClick={() => setForget(true)}>Забыть ключ сервера</button>
+            ) : null}
             <button type="button" className="btn" onClick={openSettings}>Настройки подключения</button>
           </div>
         ) : (
@@ -60,6 +67,18 @@ export function ConnectScreen() {
           </div>
         )}
       </section>
+      {forget ? (
+        <ConfirmDialog
+          title="Забыть ключ сервера?"
+          text="Ключ сервера отличается от сохранённого. Так бывает после переустановки ВМ, но так же выглядит и подмена сервера. Забывайте ключ, только если знаете, что его меняли, и сверьте новый отпечаток с выводом ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub на ВМ."
+          confirmLabel="Забыть и подключиться"
+          onCancel={() => setForget(false)}
+          onConfirm={() => {
+            setForget(false);
+            void api.connection.forgetHostKey().then(() => connect());
+          }}
+        />
+      ) : null}
     </div>
   );
 }

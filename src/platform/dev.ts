@@ -17,6 +17,8 @@ export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Pl
   const hooks: {
     lastLink?: string;
     dropConnection?: () => void;
+    /** Соединение закрыли снаружи (кнопка «Отключиться» в уведомлении Android) */
+    disconnectNative?: () => void;
     back?: () => void;
     minimized?: number;
     background?: unknown;
@@ -26,6 +28,7 @@ export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Pl
   const backs = new Set<() => void>();
   if (opts.testHooks) {
     hooks.dropConnection = () => void bridge.call({ op: '__drop' });
+    hooks.disconnectNative = () => void bridge.call({ op: 'disconnect' });
     // Кнопка «Назад» Android и сворачивание — для E2E
     hooks.back = () => backs.forEach((cb) => cb());
     // «Касание уведомления» для E2E

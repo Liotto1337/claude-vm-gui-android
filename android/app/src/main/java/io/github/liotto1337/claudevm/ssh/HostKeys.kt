@@ -38,6 +38,16 @@ class HostKeys(private val file: File) {
     fun knownFingerprint(host: String, port: Int, type: String): String? =
         entries().firstOrNull { it.second == type && hostMatches(it.first, host, port) }?.let { fingerprint(it.third) }
 
+    /** Забыть ключи хоста (после законной смены ключа сервера); комментарии и чужие записи остаются. */
+    fun remove(host: String, port: Int) {
+        if (!file.exists()) return
+        val kept = file.readLines().filter { line ->
+            val t = line.trim()
+            t.isEmpty() || t.startsWith("#") || t.startsWith("@") || !hostMatches(t.split(Regex("\\s+"))[0], host, port)
+        }
+        file.writeText(kept.joinToString("\n", postfix = if (kept.isEmpty()) "" else "\n"))
+    }
+
     fun add(host: String, port: Int, type: String, key: ByteArray) {
         file.parentFile?.mkdirs()
         val prev = if (file.exists()) file.readText() else ""

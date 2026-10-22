@@ -42,6 +42,19 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
         sink?.emit(event, data)
     }
 
+    /** События сессии — только пока она текущая: устаревшая (закрытая при новом connect) не мигает интерфейсу «ошибкой». */
+    private fun listenerFor(owner: () -> SshSession?): SshListener = object : SshListener {
+        private fun live() = owner() === session
+        override fun onState(state: String, attempt: Int?) { if (live()) listener.onState(state, attempt) }
+        override fun onPreflight(step: String, status: String, detail: String) { if (live()) listener.onPreflight(step, status, detail) }
+        override fun onLost() { if (live()) listener.onLost() }
+        override fun onReconnected() { if (live()) listener.onReconnected() }
+        override suspend fun onHostKey(p: HostKeyPrompt): Boolean = live() && listener.onHostKey(p)
+        override fun onData(ch: Int, seq: Int, bytes: ByteArray) { if (live()) listener.onData(ch, seq, bytes) }
+        override fun onStderr(ch: Int, seq: Int, bytes: ByteArray) { if (live()) listener.onStderr(ch, seq, bytes) }
+        override fun onClose(ch: Int) { if (live()) listener.onClose(ch) }
+    }
+
     private val listener = object : SshListener {
         override fun onState(state: String, attempt: Int?) {
             emit("state", JSONObject().put("state", state).apply { if (attempt != null) put("attempt", attempt) })
@@ -71,8 +84,11 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
             emit("state", JSONObject().put("state", "connected"))
             return SshResult.Ok
         }
+        session = null
         current?.close()
-        val next = SshSession(cfg, secrets, HostKeys(knownHosts), listener)
+        var self: SshSession? = null
+        val next = SshSession(cfg, secrets, HostKeys(knownHosts), listenerFor { self })
+        self = next
         session = next
         val r = next.connect(interactive = true)
         if (r is SshResult.Err) {
@@ -82,6 +98,8 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
         syncService()
         return r
     }
+
+    fun forgetHostKey(host: String, port: Int) = HostKeys(knownHosts).remove(host, port)
 
     fun answerHostKey(trust: Boolean) {
         hostKeyAnswer?.complete(trust)
@@ -96,6 +114,7 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
     fun openChannel(cmd: String, pty: Pair<Int, Int>?): Int =
         pty?.let { (cols, rows) -> need().openPty(cmd, cols, rows) } ?: need().openStream(cmd)
     fun write(ch: Int, data: ByteArray) = session?.write(ch, data)
+    fun closeAllChannels() = session?.closeAllChannels()
     fun end(ch: Int) = session?.end(ch)
     fun closeChannel(ch: Int) = session?.close(ch)
     fun resize(ch: Int, cols: Int, rows: Int) = session?.resize(ch, cols, rows)

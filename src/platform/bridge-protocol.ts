@@ -13,6 +13,7 @@ export type BridgeRequest =
   | { op: 'resize'; ch: number; rows: number; cols: number }
   | { op: 'writeFile'; path: string; b64: string }
   | { op: 'answerHostKey'; trust: boolean }
+  | { op: 'forgetHostKey'; host: string; port: number }
   | { op: 'tcp'; host: string; port: number }
   | { op: 'secrets.save'; name: 'password' | 'key'; value: string | null; passphrase?: string }
   | { op: 'secrets.has'; name: 'password' | 'key' }

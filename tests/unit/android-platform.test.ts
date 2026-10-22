@@ -130,4 +130,26 @@ describe('Android-платформа', () => {
     expect(Buffer.concat(calls.map((c) => Buffer.from(c.b64, 'base64'))).equals(Buffer.from(bytes))).toBe(true);
     expect(progress).toEqual([262_144, 524_288, 614_400]);
   });
+
+  it('пачки и закрытие, пришедшие раньше ответа openChannel, не теряются', async () => {
+    let fire: (e: string, d: unknown) => void = () => {};
+    const f = fakePlugin({
+      openChannel: async () => {
+        // Насосы на Kotlin стартуют до ответа — первая пачка может обогнать resolve
+        fire('chunks', { items: [{ ch: 9, seq: 0, kind: 'data', b64: b64('рано') }] });
+        fire('closed', { ch: 9 });
+        return { ch: 9 };
+      },
+    });
+    fire = f.fire;
+    const p = await androidPlatformWith(deps(f.plugin));
+    const ch = await p.ssh.stream('echo рано');
+    const got: string[] = [];
+    let closed = 0;
+    ch.on('data', (d) => got.push(new TextDecoder().decode(d)));
+    ch.on('close', () => closed++);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(got).toEqual(['рано']);
+    expect(closed).toBe(1);
+  });
 });

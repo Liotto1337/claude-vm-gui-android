@@ -38,4 +38,6 @@ export interface ConnectableTransport extends SshTransport {
   onHostKey(cb: (p: HostKeyPrompt) => void): () => void;
   answerHostKey(trust: boolean): void;
   onPreflight(cb: (e: PreflightEvent) => void): () => void;
+  /** Забыть сохранённый ключ сервера (после законной смены ключа) */
+  forgetHostKey(host: string, port: number): Promise<void>;
 }

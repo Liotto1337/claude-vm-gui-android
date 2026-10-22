@@ -18,5 +18,14 @@ export function Banner() {
       </div>
     );
   }
+  // В главном окне idle — соединение закрыли снаружи (кнопка «Отключиться» в уведомлении Android)
+  if (connection.state === 'idle') {
+    return (
+      <div className="banner banner-error" role="alert">
+        Отключено от ВМ.
+        <button type="button" className="btn btn-sm" onClick={() => void connect()}>Подключиться</button>
+      </div>
+    );
+  }
   return null;
 }

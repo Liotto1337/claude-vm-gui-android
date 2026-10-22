@@ -44,6 +44,10 @@ export function createApi(p: Platform): Api {
       onState: on('connection:state'),
       onHostKey: on('connection:hostKey'),
       answerHostKey: (trust) => c.answerHostKey(trust === true),
+      forgetHostKey: async () => {
+        const cfg = await config();
+        if (cfg) await p.ssh.forgetHostKey(cfg.host, cfg.port);
+      },
     },
     tmux: {
       list: c.tmuxList,

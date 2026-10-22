@@ -90,6 +90,7 @@ class SshSession(
         listener.onPreflight("tcp", "ok", "Порт открыт, соединение за $tcp мс")
         listener.onPreflight("ssh", "running", "")
         val (r, detail) = connectOnce(interactive)
+        if (closing) return@withContext r
         if (r is SshResult.Err) {
             listener.onPreflight("ssh", "fail", r.message)
             listener.onPreflight("tmux", "skipped", TEXT_SKIPPED)
@@ -134,7 +135,7 @@ class SshSession(
                     HostKeys.Check.MISMATCH -> {
                         verdict = Verdict.MISMATCH
                         val known = hostKeys.knownFingerprint(cfg.host, cfg.port, type) ?: "неизвестен"
-                        mismatchText = "Ключ сервера изменился. В known_hosts: $known, сервер прислал: $fp"
+                        mismatchText = "Ключ сервера изменился. Сохранённый: $known, сервер прислал: $fp. Если ключ на ВМ меняли (переустановка), забудьте сохранённый ключ и сверьте новый отпечаток"
                         return false
                     }
                     HostKeys.Check.UNKNOWN -> {
@@ -180,6 +181,11 @@ class SshSession(
             }
             if (!c.isAuthenticated) throw lastError ?: UserAuthException("no methods")
             watchdog.stop()
+            // Пока шло рукопожатие, сессию закрыли (новый connect с перезагруженного интерфейса) — соединение не нужно
+            if (closing) {
+                runCatching { c.disconnect() }
+                return SshResult.Err("TCP_UNREACHABLE", "Подключение отменено") to ""
+            }
             (c.connection.keepAlive as? KeepAliveRunner)?.maxAliveCount = 3
             c.connection.keepAlive.keepAliveInterval = 30
             c.transport.setDisconnectListener { _, _ -> onClosed(c) }
@@ -351,6 +357,9 @@ class SshSession(
         runCatching { chan.session.close() }
         listener.onClose(id)
     }
+
+    /** Закрыть все каналы, не трогая соединение (интерфейс перезагрузился — его каналы больше никому не нужны). */
+    fun closeAllChannels() = channels.keys.toList().forEach { closeChannelState(it) }
 
     fun write(ch: Int, data: ByteArray) {
         val chan = channels[ch] ?: return

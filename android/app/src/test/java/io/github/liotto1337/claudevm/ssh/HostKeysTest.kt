@@ -1,6 +1,7 @@
 package io.github.liotto1337.claudevm.ssh
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -52,4 +53,15 @@ class HostKeysTest {
     }
     @Test fun `отпечаток записанного ключа того же типа`() =
         assertEquals(HostKeys.fingerprint(key), HostKeys(file(plain)).knownFingerprint("127.0.0.1", 22, type))
+
+    @Test fun `забыть ключи хоста — простые, хешированные и с портом, чужие остаются`() {
+        val other = "10.0.0.9 ssh-rsa ${Base64.getEncoder().encodeToString(otherKey)}"
+        val f = file("# comment\n$plain\n${Fixtures.text("kh_hashed").trim()}\n[127.0.0.1]:2222 $type ${plain.split(" ")[2]}\n$other\n")
+        val kh = HostKeys(f)
+        kh.remove("127.0.0.1", 22)
+        assertEquals(HostKeys.Check.UNKNOWN, kh.check("127.0.0.1", 22, type, key))
+        assertEquals(HostKeys.Check.MATCH, kh.check("127.0.0.1", 2222, type, key))
+        assertEquals(listOf("ssh-rsa"), kh.knownTypes("10.0.0.9", 22))
+        assertTrue(f.readText().startsWith("# comment"))
+    }
 }

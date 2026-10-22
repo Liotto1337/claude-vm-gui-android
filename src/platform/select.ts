@@ -3,7 +3,7 @@ import type { Platform } from '@core/platform';
 
 /**
  * Платформа по месту запуска. В сборке APK (mode android) dev-мост не импортируется вовсе.
- * В браузере: ?bridge=ws://… — адрес моста, ?knobs={json} — тестовые настройки, ?testHooks=1 — хуки E2E.
+ * В браузере: ?bridge=ws://…/?token=… — адрес моста с токеном (его печатает `npm run bridge`), ?knobs={json} — тестовые настройки, ?testHooks=1 — хуки E2E.
  * В APK для дымового теста (VITE_TEST_KNOBS=1) — knobs из localStorage['cvg-knobs'].
  */
 export async function selectPlatform(): Promise<Platform> {

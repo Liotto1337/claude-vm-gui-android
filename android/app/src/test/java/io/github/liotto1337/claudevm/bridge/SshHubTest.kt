@@ -79,4 +79,15 @@ class SshHubTest {
         val closedAt = events.indexOfFirst { it.first == "closed" }
         assertTrue(events.subList(closedAt, events.size).none { it.first == "chunks" })
     }
+
+    @Test fun `новый интерфейс — каналы прежнего закрываются, соединение остаётся`() = runBlocking {
+        assertEquals(SshResult.Ok, hub.connect(SshConfig("127.0.0.1", 22, "root")))
+        val ch = hub.openChannel("sleep 30", 80 to 24)
+        events.clear()
+        hub.closeAllChannels()
+        val t = System.currentTimeMillis()
+        while (events.none { it.first == "closed" && it.second.getInt("ch") == ch } && System.currentTimeMillis() - t < 5000) Thread.sleep(20)
+        assertTrue(events.toString(), events.any { it.first == "closed" && it.second.getInt("ch") == ch })
+        assertTrue(hub.status())
+    }
 }

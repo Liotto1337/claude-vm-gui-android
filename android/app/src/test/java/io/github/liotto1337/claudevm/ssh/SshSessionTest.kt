@@ -82,6 +82,21 @@ class SshSessionTest {
         assertEquals("hi\n", s.exec("echo hi").stdout)
     }
 
+    @Test fun `сессию закрыли во время рукопожатия — после входа соединение не остаётся`() = runBlocking {
+        var self: SshSession? = null
+        val events = Collections.synchronizedList(mutableListOf<String>())
+        val listener = object : SshListener {
+            override fun onState(state: String, attempt: Int?) { events.add(state) }
+            // Пока человек сверяет отпечаток, интерфейс перезагрузился и новый connect закрыл эту сессию
+            override suspend fun onHostKey(p: HostKeyPrompt): Boolean = true.also { self!!.close() }
+        }
+        val s = SshSession(SshConfig("127.0.0.1", 22, "root"), keySecrets(), HostKeys(kh()), listener).also { open.add(it); self = it }
+        val r = s.connect(true)
+        assertTrue(r.toString(), r is SshResult.Err)
+        assertEquals(false, s.connected)
+        assertTrue(events.toString(), "connected" !in events)
+    }
+
     @Test fun `отказ доверять ключу — HOSTKEY_REJECTED`() = runBlocking {
         val r = session(Recorder(trust = false)).connect(interactive = true)
         assertEquals("HOSTKEY_REJECTED", (r as SshResult.Err).code)
@@ -102,7 +117,7 @@ class SshSessionTest {
         known.writeText("${line[0]} ${line[1]} ${Base64.getEncoder().encodeToString(blob)}\n")
         val r = session(Recorder(), known = known).connect(true) as SshResult.Err
         assertEquals("HOSTKEY_MISMATCH", r.code)
-        assertTrue(r.message, r.message.startsWith("Ключ сервера изменился. В known_hosts: SHA256:"))
+        assertTrue(r.message, r.message.startsWith("Ключ сервера изменился. Сохранённый: SHA256:"))
     }
 
     @Test fun `ни ключа, ни пароля — AUTH_FAILED`() = runBlocking {

@@ -156,6 +156,8 @@ export class AppController {
         reattaching = this.s?.term.current != null;
       }),
       conn.on('state', (st) => {
+        // Соединение закрыли снаружи (уведомление Android) — сервисы больше не нужны, их опросы встали бы на ошибках
+        if (st.state === 'idle' && !this.disconnecting) void this.teardown(false);
         if (st.state === 'connected' && reattaching) {
           this.s?.term.once('reattached', () => {
             reattaching = false;
@@ -231,9 +233,16 @@ export class AppController {
   }
 
   /** «Отключиться»: сервисы и соединение. */
+  private disconnecting = false;
+
   async disconnect(): Promise<void> {
     this.platform.ssh.answerHostKey(false);
-    await this.teardown(true);
+    this.disconnecting = true;
+    try {
+      await this.teardown(true);
+    } finally {
+      this.disconnecting = false;
+    }
   }
 
   private async teardown(closeTransport: boolean): Promise<void> {

@@ -1,13 +1,16 @@
 // Dev-мост: SSH из браузера через Node (ssh2). Только для разработки и E2E, в APK не попадает.
 //   npm run bridge — слушает 127.0.0.1:${CVG_BRIDGE_PORT ?? 8790}
 //   CVG_KNOWN_HOSTS — свой known_hosts; CVG_BRIDGE_KEY — путь к ключу; CVG_BRIDGE_PASSWORD — пароль
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { utils, type ClientChannel } from 'ssh2';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { fail, ok, type HostKeyPrompt, type VmConfig } from '../src/shared/ipc';
 import type { BridgeEvent, BridgeRequest } from '../src/platform/bridge-protocol';
+import { removeHost } from '../src/shared/known-hosts';
+import { bridgeAllowed } from './auth';
 import { checkTcp } from './preflight';
 import { SshConnection } from './ssh';
 
@@ -121,6 +124,11 @@ function session(ws: WebSocket): void {
         hostKeyAnswer?.(r.trust === true);
         hostKeyAnswer = null;
         return null;
+      case 'forgetHostKey': {
+        const path = process.env.CVG_KNOWN_HOSTS ?? join(homedir(), '.ssh', 'known_hosts');
+        if (existsSync(path)) writeFileSync(path, removeHost(readFileSync(path, 'utf8'), r.host, r.port));
+        return null;
+      }
       case 'tcp': {
         const t = await checkTcp(r.host, r.port);
         return { ok: t.ok, ms: t.ms };
@@ -167,6 +175,17 @@ function session(ws: WebSocket): void {
 }
 
 const port = Number(process.env.CVG_BRIDGE_PORT ?? 8790);
-const wss = new WebSocketServer({ host: '127.0.0.1', port, maxPayload: 64 * 1024 * 1024 });
+// Случайный токен на запуск: страница передаёт его в ?bridge=ws://…/?token=…
+const token = process.env.CVG_BRIDGE_TOKEN || randomBytes(16).toString('hex');
+const wss = new WebSocketServer({
+  host: '127.0.0.1',
+  port,
+  maxPayload: 64 * 1024 * 1024,
+  verifyClient: (info: { origin: string; req: { url?: string } }) => bridgeAllowed(info.origin, info.req.url, token),
+});
 wss.on('connection', session);
-wss.on('listening', () => console.log(`dev-мост: ws://127.0.0.1:${port}`));
+wss.on('listening', () => {
+  const url = `ws://127.0.0.1:${port}/?token=${token}`;
+  console.log(`dev-мост: ${url}`);
+  console.log(`интерфейс: http://127.0.0.1:5173/?bridge=${encodeURIComponent(url)}`);
+});

@@ -163,3 +163,22 @@ test('касание уведомления открывает сессию; н�
     await app.close();
   }
 });
+
+test('соединение закрыли из уведомления («Отключиться») — плашка «Отключено» и «Подключиться»', async () => {
+  const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
+  const { app, page } = await launchApp(
+    { CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: trustedKnownHosts(), CVG_TMUX_SOCKET: SOCK, CVG_TEST_HOOKS: '1' },
+    PHONE,
+  );
+  try {
+    await item(page, 'cvg-test-a').tap({ timeout: 20_000 });
+    await page.evaluate(() => (window as unknown as { __cvg: { disconnectNative(): void } }).__cvg.disconnectNative());
+    const banner = page.getByRole('alert').filter({ hasText: 'Отключено' });
+    await expect(banner).toBeVisible();
+    await banner.getByRole('button', { name: 'Подключиться' }).tap();
+    await expect(banner).toBeHidden({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'cvg-test-a' })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});

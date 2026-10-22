@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { launchApp, withConfig, tempKnownHostsPath, trustedKnownHosts, TEST_KEY, hasTestKey } from './helpers';
 
 test('без настроек открывается окно «Настройки подключения»', async () => {
@@ -131,6 +132,28 @@ test('пароль сохраняется и показывается как с�
     await expect(dialog.getByText('Пароль сохранён')).toBeVisible();
     await dialog.getByRole('button', { name: 'Удалить пароль' }).click();
     await expect(dialog.getByLabel('Пароль (необязательно)')).toHaveValue('');
+  } finally {
+    await app.close();
+  }
+});
+
+test('ключ сервера сменился: понятная ошибка, «Забыть ключ сервера» и новая сверка отпечатка', async () => {
+  test.skip(!hasTestKey, 'нет тестового ключа');
+  // В known_hosts — ключ того же типа, но другой (как после переустановки ВМ)
+  const kh = tempKnownHostsPath();
+  const [host, type, b64] = execFileSync('ssh-keyscan', ['-t', 'ed25519', '127.0.0.1'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split(' ');
+  const blob = Buffer.from(b64, 'base64');
+  blob[blob.length - 1] ^= 1;
+  writeFileSync(kh, `${host} ${type} ${blob.toString('base64')}\n`);
+  const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
+  const { app, page } = await launchApp({ CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: kh });
+  try {
+    await expect(page.getByText(/Ключ сервера изменился\. Сохранённый: SHA256:\S+, сервер прислал: SHA256:/)).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Забыть ключ сервера' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Забыть ключ сервера?' });
+    await expect(confirm.getByText(/подмен/)).toBeVisible();
+    await confirm.getByRole('button', { name: 'Забыть и подключиться' }).click();
+    await expect(page.getByRole('dialog', { name: 'Новый сервер' })).toBeVisible({ timeout: 20_000 });
   } finally {
     await app.close();
   }

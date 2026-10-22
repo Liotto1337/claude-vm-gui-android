@@ -248,7 +248,7 @@ export class SshConnection extends EventEmitter {
         .map((l) => l.trim().split(/\s+/))
         .find(([h, t, b]) => t === type && b && checkKnownHosts(`${h} ${t} ${b}`, host, port, type, Buffer.from(b, 'base64')) === 'match');
       const knownFp = known ? fingerprintSha256(Buffer.from(known[2], 'base64')) : 'неизвестен';
-      const message = `Ключ сервера изменился. В known_hosts: ${knownFp}, сервер прислал: ${fingerprint}`;
+      const message = `Ключ сервера изменился. Сохранённый: ${knownFp}, сервер прислал: ${fingerprint}. Если ключ на ВМ меняли (переустановка), забудьте сохранённый ключ и сверьте новый отпечаток`;
       return { verdict: 'mismatch', message };
     }
     if (!interactive) return { verdict: 'rejected', message: '' };

@@ -170,6 +170,8 @@ export interface Api {
     onState(cb: (s: ConnectionState) => void): Unsubscribe;
     onHostKey(cb: (p: HostKeyPrompt) => void): Unsubscribe;
     answerHostKey(trust: boolean): void;
+    /** Забыть сохранённый ключ сервера из настроек (после законной смены ключа на ВМ) */
+    forgetHostKey(): Promise<void>;
   };
   tmux: {
     list(): Promise<Result<TmuxSession[]>>;

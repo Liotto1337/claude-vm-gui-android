@@ -22,6 +22,7 @@ export interface VmBridgePlugin {
   /** offset 0 — файл создаётся заново (права 0600), дальше — дописывается с этого места */
   writeFile(o: { path: string; b64: string; offset: number }): Promise<void>;
   answerHostKey(o: { trust: boolean }): Promise<void>;
+  forgetHostKey(o: { host: string; port: number }): Promise<void>;
   checkTcp(o: { host: string; port: number }): Promise<{ ok: boolean; ms: number | null }>;
   secretsSave(o: { name: 'password' | 'key'; value: string | null; passphrase?: string }): Promise<{ ok: true; keyType?: string } | Fail>;
   secretsHas(o: { name: 'password' | 'key' }): Promise<{ value: 'yes' | 'no' | 'unreadable' }>;
@@ -47,6 +48,18 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
   const { plugin } = d;
   const events = new Emitter();
   const channels = new Map<number, SeqChannel>();
+  // Пачки и закрытие канала, о котором JS ещё не знает: насосы на Kotlin стартуют до ответа openChannel
+  type Early = { items: { seq: number; kind: 'data' | 'stderr'; b64: string }[]; closed: boolean };
+  const early = new Map<number, Early>();
+  const earlyFor = (ch: number): Early => {
+    let e = early.get(ch);
+    if (!e) {
+      early.set(ch, (e = { items: [], closed: false }));
+      // Канал так и не открылся в JS (ответ потерян) — не держать его пачки вечно
+      setTimeout(() => early.delete(ch), 30_000);
+    }
+    return e;
+  };
   let connected = (await plugin.status().catch(() => ({ connected: false }))).connected;
 
   const on = <T>(event: string, cb: (data: T) => void) => void plugin.addListener(event, cb as (data: never) => void);
@@ -59,12 +72,17 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
   on<HostKeyPrompt>('hostkey', (p) => events.emit('hostkey', p));
   on<PreflightEvent>('preflight', (e) => events.emit('preflight', e));
   on<{ items: { ch: number; seq: number; kind: 'data' | 'stderr'; b64: string }[] }>('chunks', ({ items }) => {
-    for (const i of items) channels.get(i.ch)?.push(i.seq, i.kind, fromB64(i.b64));
+    for (const i of items) {
+      const c = channels.get(i.ch);
+      if (c) c.push(i.seq, i.kind, fromB64(i.b64));
+      else earlyFor(i.ch).items.push(i);
+    }
   });
   on<{ ch: number }>('closed', ({ ch }) => {
     const c = channels.get(ch);
     channels.delete(ch);
-    c?.closedByPeer();
+    if (c) c.closedByPeer();
+    else earlyFor(ch).closed = true;
   });
 
   const openChannel = async (cmd: string, pty?: { cols: number; rows: number }): Promise<Channel> => {
@@ -77,6 +95,18 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
       resize: (rows, cols) => quiet(plugin.resize({ ch, cols, rows })),
     });
     channels.set(ch, c);
+    const e = early.get(ch);
+    if (e) {
+      early.delete(ch);
+      // После того как вызывающий подпишется на канал
+      setTimeout(() => {
+        for (const i of e.items) c.push(i.seq, i.kind, fromB64(i.b64));
+        if (e.closed) {
+          channels.delete(ch);
+          c.closedByPeer();
+        }
+      }, 0);
+    }
     return c;
   };
 
@@ -106,6 +136,7 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
     onHostKey: (cb) => events.on('hostkey', cb),
     answerHostKey: (trust) => void plugin.answerHostKey({ trust }).catch(() => {}),
     onPreflight: (cb) => events.on('preflight', cb),
+    forgetHostKey: (host, port) => plugin.forgetHostKey({ host, port }),
   };
 
   return {

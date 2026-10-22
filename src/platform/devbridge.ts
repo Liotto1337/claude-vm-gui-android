@@ -132,5 +132,8 @@ export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: st
     onHostKey: (cb: (p: HostKeyPrompt) => void) => events.on('hostkey', cb),
     answerHostKey: (trust) => void call({ op: 'answerHostKey', trust }).catch(() => {}),
     onPreflight: (cb: (e: PreflightEvent) => void) => events.on('preflight', cb),
+    forgetHostKey: async (host, port) => {
+      await call({ op: 'forgetHostKey', host, port });
+    },
   };
 }

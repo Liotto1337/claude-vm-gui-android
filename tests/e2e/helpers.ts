@@ -39,7 +39,7 @@ function freePort(): Promise<number> {
 }
 
 /** Dev-мост на свободном порту; ждёт строки «dev-мост». */
-async function startBridge(env: Record<string, string>): Promise<{ port: number; proc: ChildProcess }> {
+async function startBridge(env: Record<string, string>): Promise<{ url: string; proc: ChildProcess }> {
   const port = await freePort();
   const proc = spawn('node_modules/.bin/tsx', ['--tsconfig', 'tsconfig.node.json', 'bridge/server.ts'], {
     env: { ...process.env, ...env, CVG_BRIDGE_PORT: String(port) },
@@ -47,17 +47,19 @@ async function startBridge(env: Record<string, string>): Promise<{ port: number;
     // Своя группа процессов: tsx запускает node дочерним процессом, убивать надо обоих
     detached: true,
   });
-  await new Promise<void>((resolve, reject) => {
+  // Адрес с токеном мост печатает при старте
+  const url = await new Promise<string>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('dev-мост не запустился за 20 с')), 20_000);
     proc.stdout!.on('data', (d: Buffer) => {
-      if (String(d).includes('dev-мост')) {
+      const m = /dev-мост: (\S+)/.exec(String(d));
+      if (m) {
         clearTimeout(t);
-        resolve();
+        resolve(m[1]);
       }
     });
     proc.once('exit', (code) => reject(new Error(`dev-мост завершился: ${code}`)));
   });
-  return { port, proc };
+  return { url, proc };
 }
 
 export interface Launched {
@@ -95,7 +97,7 @@ export async function launchApp(env: Record<string, string> = {}, opts: { viewpo
   if (env.CVG_FAKE_CLAUDE === '1') knobs.fakeClaude = true;
   if (env.CVG_CLAUDE_CMD) knobs.claudeCmd = env.CVG_CLAUDE_CMD;
   if (env.CVG_CLAUDE_DIR) knobs.claudeDir = env.CVG_CLAUDE_DIR;
-  const q = new URLSearchParams({ bridge: `ws://127.0.0.1:${bridge.port}`, knobs: JSON.stringify(knobs) });
+  const q = new URLSearchParams({ bridge: bridge.url, knobs: JSON.stringify(knobs) });
   if (env.CVG_TEST_HOOKS === '1') q.set('testHooks', '1');
   if (env.CVG_DEMO_HOST) q.set('demoHost', env.CVG_DEMO_HOST);
   const page = context.pages()[0] ?? (await context.newPage());
