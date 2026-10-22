@@ -49,3 +49,9 @@
 @media (max-width: 839.98px) and (prefers-reduced-motion: reduce) {
   .drawer { transition: none; }
 }
+
+/* Строка клавиш терминала и «Копировать» (телефон) */
+.key-row { display: flex; gap: 4px; padding: 4px 8px 6px; overflow-x: auto; flex: none; scrollbar-width: none; }
+.key { min-width: 40px; height: 36px; padding: 0 8px; border-radius: 8px; border: 0.5px solid var(--border-strong); background: var(--panel); color: var(--text); font: 14px var(--font-mono); flex: none; touch-action: manipulation; }
+.key[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.copy-btn { position: absolute; top: 8px; right: 8px; z-index: 2; }

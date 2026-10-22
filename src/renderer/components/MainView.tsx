@@ -16,7 +16,7 @@ import { api } from '../api';
 import { setServerOpen } from '../state';
 
 export function MainView() {
-  const { sessions, current, chat, viewOverride, serverOpen } = useAppState();
+  const { sessions, current, chat, viewOverride, serverOpen, picked } = useAppState();
   // Диалог новой сессии; group — сразу положить её в эту группу
   const [newSession, setNewSession] = useState<{ group?: string } | null>(null);
   const session = sessions.find((s) => s.name === current) ?? null;
@@ -29,7 +29,7 @@ export function MainView() {
   // Телефон: список сессий — выдвижная панель; открыта, пока сессия не выбрана, выбор её закрывает
   const phone = usePhone();
   const [drawerOpen, setDrawerOpen] = useState(!current);
-  useEffect(() => setDrawerOpen(!current), [current]);
+  useEffect(() => setDrawerOpen(!current), [current, picked]);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => current && setDrawerOpen(false), [current]);
   useBackContext({

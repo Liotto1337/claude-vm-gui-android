@@ -44,6 +44,19 @@ test('после подключения открыт список сессий; 
   }
 });
 
+test('касание уже открытой сессии в списке тоже закрывает список', async () => {
+  const { app, page } = await open();
+  try {
+    await item(page, 'cvg-test-a').tap({ timeout: 20_000 });
+    await burger(page).tap();
+    await expect(nav(page)).toBeInViewport();
+    await item(page, 'cvg-test-a').tap();
+    await expect(nav(page)).not.toBeInViewport();
+  } finally {
+    await app.close();
+  }
+});
+
 test('свайп от левого края открывает список, касание фона — закрывает', async () => {
   const { app, page } = await open();
   try {

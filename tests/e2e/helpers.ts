@@ -44,6 +44,8 @@ async function startBridge(env: Record<string, string>): Promise<{ port: number;
   const proc = spawn('node_modules/.bin/tsx', ['--tsconfig', 'tsconfig.node.json', 'bridge/server.ts'], {
     env: { ...process.env, ...env, CVG_BRIDGE_PORT: String(port) },
     stdio: ['ignore', 'pipe', 'inherit'],
+    // Своя группа процессов: tsx запускает node дочерним процессом, убивать надо обоих
+    detached: true,
   });
   await new Promise<void>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('dev-мост не запустился за 20 с')), 20_000);
@@ -109,7 +111,9 @@ export async function launchApp(env: Record<string, string> = {}, opts: { viewpo
         await page.close({ runBeforeUnload: true }).catch(() => {});
         await page.waitForEvent('close', { timeout: 2000 }).catch(() => {});
         await context.close().catch(() => {});
-        bridge.proc.kill();
+        try {
+          process.kill(-bridge.proc.pid!, 'SIGTERM');
+        } catch {}
       },
     },
   };

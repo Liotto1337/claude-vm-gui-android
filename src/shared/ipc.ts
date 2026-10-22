@@ -219,6 +219,9 @@ export interface Api {
     onBack(cb: () => void): Unsubscribe;
     /** Свернуть приложение */
     minimize(): void;
+    /** Мелкие настройки интерфейса (размер шрифта терминала) — Preferences */
+    pref(key: string): Promise<string | null>;
+    setPref(key: string, value: string): Promise<void>;
   };
 }
 

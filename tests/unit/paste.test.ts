@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bracketedPaste, keyBytes, slashCommand } from '../../src/shared/paste';
+import { bracketedPaste, ctrlKey, keyBytes, slashCommand } from '../../src/shared/paste';
 
 describe('bracketedPaste', () => {
   it('оборачивает текст, вырезает ESC, добавляет пути картинок и Enter', () => {
@@ -42,4 +42,13 @@ describe('keyBytes', () => {
     expect(() => keyBytes({ toString: () => 'enter' } as never)).toThrow();
     expect(() => keyBytes(['2'] as never)).toThrow();
   });
+});
+
+describe('ctrlKey: Ctrl+буква со строки клавиш терминала', () => {
+  it('c и C — прерывание', () => {
+    expect(ctrlKey('c')).toBe('\x03');
+    expect(ctrlKey('C')).toBe('\x03');
+  });
+  it('a, z, [ \\ ] ^ _', () => expect(['a', 'z', '[', '\\', ']', '^', '_'].map(ctrlKey)).toEqual(['\x01', '\x1a', '\x1b', '\x1c', '\x1d', '\x1e', '\x1f']));
+  it('цифры, кириллица и несколько символов — нет', () => expect(['1', 'ф', 'ab', ''].map(ctrlKey)).toEqual([null, null, null, null]));
 });

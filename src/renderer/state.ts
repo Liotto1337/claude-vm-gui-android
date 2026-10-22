@@ -19,6 +19,8 @@ export interface AppState {
   hostKey: HostKeyPrompt | null;
   sessions: TmuxSession[];
   current: string | null;
+  /** Сколько раз выбирали сессию в списке (и ту же самую) — телефон закрывает панель списка */
+  picked: number;
   hints: Hints | null;
   systemTheme: 'light' | 'dark';
   theme: 'light' | 'dark';
@@ -59,6 +61,7 @@ let state: AppState = {
   hostKey: null,
   sessions: [],
   current: null,
+  picked: 0,
   hints: null,
   systemTheme: 'light',
   theme: 'light',
@@ -215,7 +218,8 @@ export function updateLayout(fn: (l: SidebarLayout) => SidebarLayout): void {
 }
 
 export function openSession(name: string | null): void {
-  if (name !== state.current) setState({ current: name, viewOverride: null });
+  if (name !== state.current) setState({ current: name, viewOverride: null, picked: state.picked + 1 });
+  else if (name) setState({ picked: state.picked + 1 });
   patchChat(name, () => ({ screen: null }));
   const cfg = state.config;
   if (cfg && name && cfg.lastSession !== name) {

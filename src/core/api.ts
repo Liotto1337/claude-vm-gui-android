@@ -95,6 +95,8 @@ export function createApi(p: Platform): Api {
       },
       onBack: (cb) => p.onBack?.(cb) ?? (() => {}),
       minimize: () => p.minimize?.(),
+      pref: (key) => p.prefs.get(`ui:${key}`).catch(() => null),
+      setPref: (key, value) => p.prefs.set(`ui:${key}`, value).catch(() => {}),
     },
   };
 }

@@ -34,3 +34,11 @@ export function keyBytes(k: MenuKey): string {
   if (/^[1-9]$/.test(k)) return k;
   throw new Error(`Недопустимая клавиша: ${String(k)}`);
 }
+
+/** Ctrl+символ (залипающий Ctrl на строке клавиш терминала): a–z и [ \ ] ^ _ → управляющий байт, остальное — null. */
+export function ctrlKey(ch: string): string | null {
+  if (ch.length !== 1) return null;
+  const c = ch.toLowerCase();
+  if ((c >= 'a' && c <= 'z') || '[\\]^_'.includes(c)) return String.fromCharCode(c.toUpperCase().charCodeAt(0) & 0x1f);
+  return null;
+}

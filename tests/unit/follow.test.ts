@@ -11,6 +11,13 @@ describe('слежение ленты за низом', () => {
     expect(followOnScroll(up, { scrollTop: 1000, gap: 0 }).atBottom).toBe(false);
   });
 
+  it('первый кадр плавной прокрутки ↑ на 1 px, пока ответ дописывается, — ещё не «вернулся вниз»', () => {
+    // Записано в E2E под нагрузкой: top 594 → 593, gap 1
+    const f = followOnScroll(followUserUp(FOLLOW_START, 594), { scrollTop: 593, gap: 1 });
+    expect(f.atBottom).toBe(false);
+    expect(f.userUp).toBe(true);
+  });
+
   it('пролистал вверх и вернулся в самый низ — слежение снова включено', () => {
     let f = followUserUp(FOLLOW_START, 1000);
     f = followOnScroll(f, { scrollTop: 960, gap: 40 });
