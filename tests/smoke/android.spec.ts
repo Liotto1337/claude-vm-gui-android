@@ -5,9 +5,12 @@ import { join } from 'node:path';
 import { _android, expect, test, type AndroidDevice, type Page } from '@playwright/test';
 
 // Настоящий APK на эмуляторе (scripts/smoke-android.sh): настройки → подключение к ВМ (10.0.2.2) → ключ хоста →
-// лента фейкового claude → поворот → свернуть (опрос сессии стоит) → меню в claude → уведомление «ждёт ответа» → его намерение открывает сессию
+// «Отслеживать» → лента фейкового claude → поворот → свернуть (опрос сессии стоит) → меню в claude → уведомление «ждёт ответа»
+// (только от отслеживаемой) → его намерение открывает сессию
 const PKG = 'io.github.liotto1337.claudevm';
 const SESSION = 'cvg-smoke-claude';
+/** Тоже с claude, но без отметки «Отслеживать» */
+const OTHER = 'cvg-smoke-other';
 const tmux = (...args: string[]) => execFileSync('tmux', ['-L', 'cvg-smoke', ...args]);
 /** Сколько раз интерфейс опросил открытую сессию: хук tmux на display-message пишет строку в файл */
 const POLLS = join(mkdtempSync(join(tmpdir(), 'cvg-polls-')), 'polls');
@@ -68,7 +71,13 @@ test('APK: подключение, лента, поворот, уведомле�
     await withPage(device, (p) => p.getByRole('dialog', { name: 'Новый сервер' }).getByRole('button', { name: 'Доверять' }).click({ timeout: 120_000 }));
     page = await appPage(device);
 
-    await page.getByRole('navigation', { name: 'Сессии' }).getByRole('button', { name: new RegExp(`^${SESSION}`) }).click({ timeout: 90_000 });
+    // «Отслеживать» — только первую сессию (меню сессии: ПКМ, на телефоне то же меню открывает долгое нажатие)
+    const row = page.getByRole('navigation', { name: 'Сессии' }).getByRole('button', { name: new RegExp(`^${SESSION}`) });
+    await row.waitFor({ timeout: 90_000 });
+    await row.dispatchEvent('contextmenu');
+    await page.getByRole('menuitem', { name: 'Отслеживать' }).click({ timeout: 10_000 });
+    await expect(row.getByRole('img', { name: 'Отслеживается' })).toBeVisible();
+    await row.click();
     const feed = page.getByRole('region', { name: 'Переписка' });
     await expect(feed).toBeVisible({ timeout: 60_000 });
     const composer = page.getByRole('textbox', { name: 'Сообщение для Claude' });
@@ -97,10 +106,14 @@ test('APK: подключение, лента, поворот, уведомле�
     const stopped = Date.now() + 1000;
     await new Promise((r) => setTimeout(r, 8000));
     expect(pollTimes().filter((t) => t > stopped).map((t) => t - stopped)).toEqual([]);
-    tmux('send-keys', '-t', `=${SESSION}:`, '-l', 'menu');
-    tmux('send-keys', '-t', `=${SESSION}:`, 'Enter');
+    for (const s of [OTHER, SESSION]) {
+      tmux('send-keys', '-t', `=${s}:`, '-l', 'menu');
+      tmux('send-keys', '-t', `=${s}:`, 'Enter');
+    }
     await expect.poll(() => notifications(device), { timeout: 30_000, intervals: [2000] }).toContain(`android.title=String (${SESSION}: Claude ждёт ответа)`);
     expect(await notifications(device)).toContain('android.text=String (Выбор)');
+    // Неотслеживаемая сессия тоже ждёт ответа — но уведомления о ней нет
+    expect(await notifications(device)).not.toContain(OTHER);
 
     await openFromNotification(device, SESSION);
     page = await appPage(device);

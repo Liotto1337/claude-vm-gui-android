@@ -28,6 +28,8 @@ export CVG_SMOKE_CLAUDE_DIR
 CVG_SMOKE_CLAUDE_DIR=$(mktemp -d)
 tmux -L cvg-smoke kill-server 2>/dev/null || true
 tmux -L cvg-smoke new-session -d -s cvg-smoke-claude -x 60 -y 40 "CVG_CLAUDE_DIR=$CVG_SMOKE_CLAUDE_DIR node $PWD/tests/fixtures/fake-claude.mjs"
+# Вторая сессия — без отметки «Отслеживать»: уведомлений от неё быть не должно
+tmux -L cvg-smoke new-session -d -s cvg-smoke-other -x 60 -y 40 "CVG_CLAUDE_DIR=$CVG_SMOKE_CLAUDE_DIR node $PWD/tests/fixtures/fake-claude.mjs"
 trap 'tmux -L cvg-smoke kill-server 2>/dev/null || true' EXIT
 
 npx playwright test -c playwright.android.config.ts
