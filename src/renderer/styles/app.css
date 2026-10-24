@@ -311,6 +311,9 @@ button.file-row { cursor: pointer; }
 .menu-check.is-on { background: var(--btn-dark-bg); border-color: transparent; }
 .menu-check.is-on::after { content: ''; width: 5px; height: 9px; margin-top: -2px; border: solid var(--btn-dark-text); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .menu-own { flex: 1; min-width: 0; }
+.effort { display: inline-flex; align-items: center; gap: 6px; }
+.effort input[type='range'] { width: 96px; accent-color: var(--accent); }
+.effort-value { min-width: 44px; }
 .menu-n { margin-right: 6px; }
 .menu-axis { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 13px; }
 .menu-foot { display: flex; align-items: center; gap: 12px; }
@@ -351,6 +354,9 @@ button.file-row { cursor: pointer; }
 .text-warn { color: var(--warn); }
 .swap-label { width: 40px; flex: none; }
 .disk { display: flex; flex-direction: column; gap: 4px; }
+.usage { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; margin-bottom: 4px; border-top: 0.5px solid var(--border); font-size: 13px; }
+.usage-row { display: flex; flex-direction: column; gap: 4px; }
+.usage-head { display: flex; justify-content: space-between; gap: 8px; }
 .procs { width: 100%; border-collapse: collapse; font-size: 12px; }
 .procs th, .procs td { padding: 4px 8px; border: 0.5px solid var(--border); }
 .procs th { text-align: left; font-weight: 400; color: var(--text-2); }

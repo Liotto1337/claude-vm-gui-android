@@ -106,3 +106,7 @@
     touch-action: none;
   }
 }
+
+/* Effort ползунком в листе «Модель и effort»: на всю ширину, удобно пальцу */
+.sheet-section .effort { display: flex; padding: 8px 12px; }
+.sheet-section .effort input[type='range'] { flex: 1; height: 32px; }

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type {
   ChatItem, ConnectionState, ErrorCode, Hints, HostKeyPrompt, MenuKey, MetricsSample, PreflightEvent, PreflightStep, ScreenState,
-  KeyImport, SidebarLayout, SystemInfo, TmuxSession, VmConfig,
+  KeyImport, SidebarLayout, SystemInfo, TmuxSession, UsageSample, VmConfig,
 } from '@shared/ipc';
 import { claimPending, nextTyping, type Pending } from './chat-anim';
 import { loadAnswers, nextAnswers, saveAnswers, type MenuAnswer } from './menu-history';
@@ -38,6 +38,8 @@ export interface AppState {
   metricsErrorAt: number | null;
   systemInfo: SystemInfo | null;
   serverOpen: boolean;
+  /** Расход Claude: лимиты подписки и токены за сегодня */
+  usage: UsageSample | null;
 }
 
 export interface ChatState {
@@ -77,6 +79,7 @@ let state: AppState = {
   metricsErrorAt: null,
   systemInfo: null,
   serverOpen: false,
+  usage: null,
 };
 
 const METRICS_WINDOW_MS = 5 * 60_000;
@@ -202,6 +205,7 @@ export async function init(): Promise<void> {
     }),
   );
   api.chat.onUnavailable((e) => patchChat(e.session, () => ({ unavailable: e.reason })));
+  api.usage.onSample((u) => setState({ usage: u }));
   api.metrics.onSample((s) => {
     if (s.error) return setState({ metricsErrorAt: state.metricsErrorAt ?? s.t });
     setState({ metrics: [...state.metrics.filter((m) => s.t - m.t <= METRICS_WINDOW_MS), s], metricsErrorAt: null });

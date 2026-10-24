@@ -50,7 +50,7 @@ const card = (page: Page) => page.getByRole('group', { name: 'Выбор' });
 const pane = () => tmux('capture-pane', '-p', '-t', '=cvg-test-cat:');
 const sheet = (page: Page) => page.getByRole('dialog', { name: 'Модель и effort' });
 
-test('«Модель и effort» — нижний лист: выбор уходит в claude, свайп вниз закрывает', async () => {
+test('«Модель и effort» — нижний лист: модель списком, effort ползунком, свайп вниз закрывает', async () => {
   const { app, page } = await openCat();
   try {
     const btn = page.getByRole('button', { name: 'Модель и effort' });
@@ -58,7 +58,8 @@ test('«Модель и effort» — нижний лист: выбор уход�
     await expect(sheet(page)).toBeVisible();
     await sheet(page).getByRole('menuitemradio', { name: /^Sonnet/ }).first().tap({ timeout: 30_000 });
     await expect.poll(pane).toContain('/model sonnet');
-    await sheet(page).getByRole('menuitemradio', { name: 'low' }).tap();
+    // Effort — ползунок: отпустили — уходит /effort
+    await sheet(page).getByRole('slider', { name: 'Effort' }).fill('0');
     await expect.poll(pane).toContain('/effort low');
     await expect(btn).toContainText('Sonnet');
     await expect(btn).toContainText('low');

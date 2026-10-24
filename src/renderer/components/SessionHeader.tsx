@@ -4,6 +4,7 @@ import { killSession, setViewOverride, shortPath } from '../state';
 import { useBack } from '../back-stack';
 import { ConfirmDialog } from './ConfirmDialog';
 import { IconClose, IconMenu, IconMore } from './icons';
+import { UsageLine } from './UsageBox';
 
 /**
  * mode — что сейчас показано; переключатель «Лента | Терминал» — только когда запущен claude.
@@ -26,7 +27,7 @@ export function SessionHeader({ session, mode = 'terminal', onMenu }: { session:
         <h1 className="ellipsis">{session.name}</h1>
         <span className="caption ellipsis">
           {shortPath(session.cwd)}
-          {phone ? null : ` · ${what}`}
+          {phone ? <UsageLine /> : ` · ${what}`}
         </span>
       </div>
       {session.claudeRunning ? (

@@ -9,6 +9,7 @@ import { getDraft, restoreFailed, setDraft, updateDraft, useDraft } from '../dra
 import { AttachmentChip } from './AttachmentChip';
 import { BottomSheet } from './BottomSheet';
 import { ChoiceList, ChoiceMenu, type Choice } from './ChoiceMenu';
+import { EffortSlider } from './EffortSlider';
 import { HintPopup, type HintItem } from './HintPopup';
 import { IconArrowUp, IconChevron, IconClip } from './icons';
 import { usePhone } from '../use-phone';
@@ -216,16 +217,15 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
   const model = models.find((m) => m.value === choice.model) ?? models.find((m) => m.value === 'default');
   const efforts = model?.efforts.length ? model.efforts : FALLBACK_EFFORTS;
   const modelChoices: Choice[] = models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }));
-  const effortChoices: Choice[] = efforts.map((e) => ({ value: e, label: e }));
   const pickModel = (c: Choice) =>
     void api.term.setModel(c.value, session.name).then((r) => {
       setSendError(r.ok ? null : r.error.message);
       if (r.ok) rememberChoice(session.name, { model: c.value, modelLabel: c.label });
     });
-  const pickEffort = (c: Choice) =>
-    void api.term.setEffort(c.value, session.name).then((r) => {
+  const pickEffort = (level: string) =>
+    void api.term.setEffort(level, session.name).then((r) => {
       setSendError(r.ok ? null : r.error.message);
-      if (r.ok) rememberChoice(session.name, { effort: c.value });
+      if (r.ok) rememberChoice(session.name, { effort: level });
     });
 
   return (
@@ -307,14 +307,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
                   selected={choice.model}
                   onSelect={pickModel}
                 />
-                <ChoiceMenu
-                  buttonLabel={choice.effort ? `Effort: ${choice.effort}` : 'Effort'}
-                  menuLabel="Effort"
-                  title="Effort · отправит /effort"
-                  choices={effortChoices}
-                  selected={choice.effort}
-                  onSelect={pickEffort}
-                />
+                <EffortSlider levels={efforts} value={choice.effort} onCommit={pickEffort} />
               </>
             )}
             {chatMode && working && !menuOpen ? (
@@ -333,9 +326,9 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
           <div className="caption choice-title">Модель · отправит /model</div>
           <ChoiceList choices={modelChoices} selected={choice.model} onSelect={pickModel} />
         </div>
-        <div role="menu" aria-label="Effort" className="sheet-section">
-          <div className="caption choice-title">Effort · отправит /effort</div>
-          <ChoiceList choices={effortChoices} selected={choice.effort} onSelect={pickEffort} />
+        <div className="sheet-section">
+          <div className="caption choice-title">Effort · отправит /effort, когда отпустите ползунок</div>
+          <EffortSlider levels={efforts} value={choice.effort} onCommit={pickEffort} />
         </div>
       </BottomSheet>
     </div>

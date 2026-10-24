@@ -3,6 +3,7 @@ import { transcriptPath } from '@shared/claude-session';
 import { plural } from '@shared/plural';
 import { HintsService } from './hints';
 import { MetricsService } from './metrics';
+import { UsagePoller } from '@shared/usage-poller';
 import { SessionWatcher } from './session-watch';
 import { TranscriptService } from './transcript';
 import { knobs } from './knobs';
@@ -23,6 +24,7 @@ interface Services {
   watch: SessionWatcher;
   transcript: TranscriptService;
   metrics: MetricsService;
+  usage: UsagePoller;
   claudeDir: string;
   stopPolling: () => void;
 }
@@ -79,6 +81,7 @@ export class AppController {
 
   metricsSetActive = (fast: boolean) => this.s?.metrics.setActive(fast === true);
   metricsInfo = () => this.need((s) => s.metrics.info());
+  usageLatest = async () => this.s?.usage.latest ?? null;
   chatKey = (k: MenuKey, session?: string) => this.need((s) => s.term.key(k, session));
   chatTypeText = (t: string, session?: string) => this.need((s) => s.term.typeText(t, session));
   chatLoadEarlier = () => this.need((s) => s.transcript.loadEarlier());
@@ -118,11 +121,13 @@ export class AppController {
     if (hidden) {
       s.stopPolling();
       s.metrics.stop();
+      s.usage.stop();
       s.watch.stop();
       return;
     }
     s.stopPolling = this.pollSessions(s.tmux);
     s.metrics.start();
+    s.usage.start();
     if (s.term.current) s.watch.start(s.term.current);
     // Вернулись в приложение — окно tmux под размер этого экрана (а не другого устройства с той же сессией)
     s.term.activate();
@@ -250,8 +255,14 @@ export class AppController {
     this.sessions = n;
     this.syncBackground(cfg);
     const stopPolling = this.hidden ? () => {} : this.pollSessions(tmux);
-    this.s = { conn, cfg, unsubscribe, tmux, term, hints, upload, watch, transcript, metrics, claudeDir, stopPolling };
-    if (!this.hidden) metrics.start();
+    // Лимиты подписки и токены за сегодня — раз в 2 минуты, пока приложение на экране
+    const usage = new UsagePoller((cmd, o) => conn.exec(cmd, o), claudeDir);
+    usage.on('sample', (u) => this.emit('usage:sample', u));
+    this.s = { conn, cfg, unsubscribe, tmux, term, hints, upload, watch, transcript, metrics, usage, claudeDir, stopPolling };
+    if (!this.hidden) {
+      metrics.start();
+      usage.start();
+    }
     void upload.cleanup();
     return ok(undefined);
   }
@@ -293,6 +304,7 @@ export class AppController {
       return;
     }
     s.stopPolling();
+    s.usage.stop();
     s.metrics.stop();
     this.stopChat(s);
     s.term.close();

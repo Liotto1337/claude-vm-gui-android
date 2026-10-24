@@ -46,6 +46,10 @@ export function createApi(p: Platform): Api {
   }
   p.onVisibility?.(setVisible);
 
+  // E2E (dev-мост с testHooks): лимиты подписки не запросить без настоящего токена — замер подставляется
+  const hooks = (globalThis as { __cvg?: Record<string, unknown> }).__cvg;
+  if (hooks) hooks.emitUsage = (u: unknown) => emit('usage:sample', u);
+
   return {
     config: {
       get: config,
@@ -120,6 +124,7 @@ export function createApi(p: Platform): Api {
       key: c.chatKey,
       typeText: c.chatTypeText,
     },
+    usage: { get: c.usageLatest, onSample: on('usage:sample') },
     updates: {
       get: async () => updates.latest,
       onAvailable: on('updates:available'),

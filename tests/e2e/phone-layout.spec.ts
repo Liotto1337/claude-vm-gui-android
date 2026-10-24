@@ -155,7 +155,7 @@ test('касание уведомления открывает сессию; н�
   try {
     await expect(nav(page)).toBeInViewport({ timeout: 20_000 });
     const bg = () => page.evaluate(() => (window as unknown as { __cvg: { background?: unknown } }).__cvg.background);
-    await expect.poll(bg).toEqual({ keepAlive: true, notifications: true, tmux: `tmux -L ${SOCK}`, sessions: 2 });
+    await expect.poll(bg).toEqual({ keepAlive: true, notifications: true, tmux: `tmux -L ${SOCK}`, sessions: 2, watched: [] });
     await page.evaluate(() => (window as unknown as { __cvg: { openSession(n: string): void } }).__cvg.openSession('cvg-test-b'));
     await expect(page.getByRole('heading', { name: 'cvg-test-b' })).toBeVisible();
     await expect(nav(page)).not.toBeInViewport();
