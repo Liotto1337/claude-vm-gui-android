@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { useBack } from '../back-stack';
 
 /** /compact с пожеланиями (команда однострочная — переводы строк становятся пробелами). */
 export function compactCommand(keep: string): string {
@@ -9,6 +10,8 @@ export function compactCommand(keep: string): string {
 export function CompactDialog(props: { onConfirm: (command: string) => void; onCancel: () => void }) {
   const id = useId();
   const [keep, setKeep] = useState('');
+  // «Назад» Android закрывает диалог, как остальные диалоги
+  useBack(true, props.onCancel);
   return (
     <div className="overlay" onKeyDown={(e) => e.key === 'Escape' && props.onCancel()}>
       <form

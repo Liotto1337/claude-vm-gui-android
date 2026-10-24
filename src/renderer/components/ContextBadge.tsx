@@ -3,7 +3,7 @@ import type { ContextCategory, TmuxSession } from '@shared/ipc';
 import { contextView } from '@shared/context-parse';
 import { formatTokens } from '@shared/usage';
 import { api } from '../api';
-import { windowFor } from '../context-window';
+import { contextNow, windowFor } from '../context-window';
 import { useAppState } from '../state';
 import { terminalTheme } from '../terminal-theme';
 import { BottomSheet } from './BottomSheet';
@@ -33,8 +33,9 @@ const hhmm = (t: number) => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-d
  */
 export function ContextBadge({ session, phone = false }: { session: TmuxSession; phone?: boolean }) {
   const c = useAppState().chat[session.name];
-  const ctx = c?.context ?? { used: null, model: null, snapshot: null, snapshotAt: null, snapshotModel: null };
-  const view = contextView(ctx.used, windowFor(ctx));
+  const ctx = c?.context ?? { used: null, usedAt: null, model: null, snapshot: null, snapshotAt: null, snapshotModel: null };
+  const now = contextNow(ctx);
+  const view = contextView(now.used, windowFor(ctx));
   const free = !!c && !c.busy && c.screen?.kind === 'prompt' && c.screen.status === null && c.screen.input.trim() === '';
   const [open, setOpen] = useState(false);
   /** Замер пришёл в это открытие панели — пометка времени не нужна */
@@ -85,7 +86,8 @@ export function ContextBadge({ session, phone = false }: { session: TmuxSession;
 
   const label = view.pct !== null ? `Контекст ${view.pct} %` : view.used !== null ? `Контекст ${formatTokens(view.used)}` : 'Контекст —';
   const snap = ctx.snapshot;
-  const used = snap ? snap.categories.filter((k) => !NOT_USED.has(k.name)) : [];
+  // разбивка старее ответа и заметно расходится с ним — полоска одним цветом, чтобы не спорила с числом
+  const used = snap && now.fresh ? snap.categories.filter((k) => !NOT_USED.has(k.name)) : [];
   const note =
     waitingFrom !== null ? 'обновляю…' : !snap ? 'Разбивка недоступна' : !fresh && ctx.snapshotAt !== null ? `Разбивка на ${hhmm(ctx.snapshotAt)}` : null;
 
