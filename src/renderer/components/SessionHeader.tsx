@@ -3,6 +3,7 @@ import type { TmuxSession } from '@shared/ipc';
 import { killSession, setViewOverride, shortPath } from '../state';
 import { useBack } from '../back-stack';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ContextBadge } from './ContextBadge';
 import { IconClose, IconMenu, IconMore } from './icons';
 import { UsageLine } from './UsageBox';
 
@@ -30,6 +31,7 @@ export function SessionHeader({ session, mode = 'terminal', onMenu }: { session:
           {phone ? <UsageLine /> : ` · ${what}`}
         </span>
       </div>
+      {session.claudeRunning ? <ContextBadge key={session.name} session={session} phone={phone} /> : null}
       {session.claudeRunning ? (
         <div role="group" aria-label="Вид" className="seg">
           <button type="button" aria-pressed={mode === 'chat'} onClick={() => setViewOverride(null)}>Лента</button>

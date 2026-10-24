@@ -136,7 +136,12 @@ export type ChatItem =
       kind: 'tool'; id: string; name: string; summary: string; input: string;
       status: 'running' | 'ok' | 'error'; result: string | null; children: ChatItem[];
     };
-export interface ChatEvent { session: string; reset: boolean; prepend: boolean; items: ChatItem[]; hasEarlier: boolean }
+/** Контекст сессии: «занято» по последнему ответу, разбивка — последний замер /context (ms по timestamp записи) */
+export interface SessionContext { used: number | null; model: string | null; snapshot: ContextSnapshot | null; snapshotAt: number | null; snapshotModel: string | null }
+import type { ContextSnapshot } from './context-parse';
+export type { ContextSnapshot, ContextCategory } from './context-parse';
+
+export interface ChatEvent { session: string; reset: boolean; prepend: boolean; items: ChatItem[]; hasEarlier: boolean; context: SessionContext }
 export interface ScreenEvent { session: string; state: ScreenState; busy: boolean }
 
 /** Порядок, закрепление и группы сессий в сайдбаре (хранится локально, отдельно для каждой ВМ). */
