@@ -1,8 +1,9 @@
 /**
  * Долгое нажатие пальцем (телефон): удержание ms (500) без сдвига больше slop (10 px) вызывает cb в точке нажатия.
  * Мышь не участвует — у неё ПКМ. Клик после срабатывания проглатывается. Возвращает отписку.
+ * target — элемент под пальцем в момент касания (к срабатыванию под пальцем может оказаться другое).
  */
-export function longPress(el: HTMLElement, cb: (x: number, y: number) => void, opts: { ms?: number; slop?: number } = {}): () => void {
+export function longPress(el: HTMLElement, cb: (x: number, y: number, target: Element | null) => void, opts: { ms?: number; slop?: number } = {}): () => void {
   const ms = opts.ms ?? 500;
   const slop = opts.slop ?? 10;
   let press: { timer: ReturnType<typeof setTimeout>; x: number; y: number; id: number } | null = null;
@@ -29,6 +30,7 @@ export function longPress(el: HTMLElement, cb: (x: number, y: number) => void, o
     cancel();
     swallow = false;
     const { clientX: x, clientY: y } = e;
+    const target = (e.target as Element | null) ?? null;
     press = {
       x,
       y,
@@ -36,7 +38,7 @@ export function longPress(el: HTMLElement, cb: (x: number, y: number) => void, o
       timer: setTimeout(() => {
         press = null;
         swallow = true;
-        cb(x, y);
+        cb(x, y, target);
       }, ms),
     };
   };

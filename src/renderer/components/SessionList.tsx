@@ -207,8 +207,12 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
       setMenu({ x: r.left + 24, y: r.bottom - 6, ref });
     }
   };
+  // contextmenu от касания пальцем (WebView Android шлёт его сам после долгого нажатия) — меню уже открыло долгое нажатие
+  const lastTouch = useRef(0);
+  const fromTouch = () => Date.now() - lastTouch.current < 2000;
   const onContext = (e: MouseEvent, ref: ItemRef) => {
     e.preventDefault();
+    if (fromTouch()) return;
     setMenu({ x: e.clientX, y: e.clientY, ref });
   };
 
@@ -216,11 +220,20 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    return longPress(el, (x, y) => {
-      const key = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-key]')?.dataset.key;
+    // Касание пальцем: следом WebView Android сам шлёт contextmenu (часто с другой целью) — его не слушаем
+    const touched = (e: globalThis.PointerEvent) => {
+      if (e.pointerType === 'touch') lastTouch.current = Date.now();
+    };
+    el.addEventListener('pointerdown', touched, true);
+    const off = longPress(el, (x, y, target) => {
+      const key = target?.closest<HTMLElement>('[data-key]')?.dataset.key;
       const ref: ItemRef | 'list' = key?.startsWith('s:') ? { session: key.slice(2) } : key?.startsWith('g:') ? { group: key.slice(2) } : 'list';
       setMenu({ x, y, ref, sheet: true });
     });
+    return () => {
+      off();
+      el.removeEventListener('pointerdown', touched, true);
+    };
   }, []);
 
   // ── Меню ──
@@ -232,6 +245,7 @@ export function SessionList({ onNewSession }: { onNewSession: (group?: string) =
   const onListContext = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, [role="menu"], [role="dialog"], .overlay')) return;
     e.preventDefault();
+    if (fromTouch()) return;
     setMenu({ x: e.clientX, y: e.clientY, ref: 'list' });
   };
   const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {

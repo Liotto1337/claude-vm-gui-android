@@ -13,6 +13,7 @@ import android.content.Intent
 import android.os.Build
 import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.bridge.ChunkBatcher
+import io.github.liotto1337.claudevm.bridge.PluginArgs
 import io.github.liotto1337.claudevm.bridge.PluginErrors
 import io.github.liotto1337.claudevm.bridge.SerialQueue
 import io.github.liotto1337.claudevm.bridge.SshHub
@@ -105,7 +106,7 @@ class VmBridgePlugin : Plugin() {
     @PluginMethod fun status(call: PluginCall) = run(call) { JSObject().put("connected", hub.status()) }
 
     @PluginMethod fun exec(call: PluginCall) = run(call) {
-        val r = hub.exec(call.getString("cmd") ?: "", call.getString("stdin"), call.getLong("timeoutMs"))
+        val r = hub.exec(call.getString("cmd") ?: "", call.getString("stdin"), PluginArgs.longOrNull(call, "timeoutMs"))
         JSObject().put("code", r.code).put("stdout", r.stdout).put("stderr", r.stderr)
     }
 
@@ -120,7 +121,7 @@ class VmBridgePlugin : Plugin() {
     @PluginMethod fun resize(call: PluginCall) = runOrdered(call) { hub.resize(call.ch(), call.getInt("cols") ?: 80, call.getInt("rows") ?: 24); null }
 
     @PluginMethod fun writeFile(call: PluginCall) = run(call) {
-        hub.writeFile(call.getString("path") ?: "", Base64.getDecoder().decode(call.getString("b64") ?: ""), call.getLong("offset") ?: 0)
+        hub.writeFile(call.getString("path") ?: "", Base64.getDecoder().decode(call.getString("b64") ?: ""), PluginArgs.long(call, "offset"))
         null
     }
 

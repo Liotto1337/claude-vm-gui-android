@@ -89,6 +89,8 @@
 /* Ручка переноса сессий и групп (телефон): перенос пальцем, без долгого нажатия */
 @media (max-width: 839.98px) {
   .row-session, .row-group { position: relative; }
+  /* Долгое нажатие — наше меню листом: без выделения текста и системного меню WebView */
+  .row-session, .row-group { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .row-session > .session-item, .row-group > .group-header { padding-right: 44px; }
   .drag-handle {
     position: absolute;

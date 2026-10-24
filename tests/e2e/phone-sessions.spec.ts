@@ -102,3 +102,34 @@ test('перенос ручкой ⋮⋮: третья сессия — на м�
     await l.app.close();
   }
 });
+
+test('Android после долгого нажатия сам шлёт contextmenu — меню сессии не подменяется меню пустого места', async () => {
+  const { app, page } = await open();
+  try {
+    const row = item(page, 'cvg-test-b');
+    await hold(page, row);
+    // Как WebView Android: contextmenu по списку (цель — не строка) сразу после долгого касания
+    await nav(page).getByRole('group', { name: /^Список сессий/ }).dispatchEvent('contextmenu', { bubbles: true, cancelable: true });
+    await expect(sheet(page, 'Действия с сессией cvg-test-b')).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Новая группа…' })).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('долгое нажатие — цель по месту касания, даже если под пальцем к срабатыванию другое', async () => {
+  const { app, page } = await open();
+  try {
+    const row = item(page, 'cvg-test-b');
+    // Пока палец прижат, содержимое сдвинулось (прокрутка, выделение текста WebView)
+    const b = (await row.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+    await row.evaluate((el) => ((el.closest('li') as HTMLElement).style.transform = 'translateY(400px)'));
+    await page.waitForTimeout(700);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(sheet(page, 'Действия с сессией cvg-test-b')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
