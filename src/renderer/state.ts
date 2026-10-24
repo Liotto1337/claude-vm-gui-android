@@ -140,7 +140,8 @@ export async function connect(): Promise<void> {
     pendingOpen = null;
     setState({ layout: saved });
     layoutLoaded = true;
-    applySessions(sessions);
+    // Список не получили — это не «сессий нет»: раскладку не сверяем, иначе сотрутся закрепления, группы и отметки
+    if (list.ok) applySessions(sessions);
     setState({ view: 'main', current: sessions.some((s) => s.name === last) ? (last ?? null) : null });
   } else {
     setState({ connectError: r.error, hostKey: null });

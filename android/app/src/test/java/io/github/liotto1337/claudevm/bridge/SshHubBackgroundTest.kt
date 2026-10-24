@@ -3,6 +3,8 @@ package io.github.liotto1337.claudevm.bridge
 import android.app.Application
 import android.net.ConnectivityManager
 import androidx.test.core.app.ApplicationProvider
+import io.github.liotto1337.claudevm.notify.Notifications
+import io.github.liotto1337.claudevm.notify.SessionNotifier
 import io.github.liotto1337.claudevm.secrets.KeyProvider
 import io.github.liotto1337.claudevm.secrets.SecretStore
 import io.github.liotto1337.claudevm.ssh.Fixtures
@@ -71,5 +73,15 @@ class SshHubBackgroundTest {
         assertTrue(states.toString(), "failed" in states)
         assertNotNull(shadowOf(app).nextStoppedService)
         assertEquals(0, callbacks.size)
+    }
+
+    @Test fun `сняли «Отслеживать» — висящее уведомление о сессии снимается (и когда приложение на экране)`() {
+        Notifications.postSession(app, "a", SessionNotifier.Kind.WAITING, "Выбор")
+        Notifications.postSession(app, "b", SessionNotifier.Kind.WAITING, "Выбор")
+        val nm = shadowOf(app.getSystemService(android.app.NotificationManager::class.java))
+        assertEquals(2, nm.allNotifications.size)
+        hub.setBackground(SshHub.Background(watched = setOf("a", "b")))
+        hub.setBackground(SshHub.Background(watched = setOf("b")))
+        assertEquals(1, nm.allNotifications.size)
     }
 }

@@ -1,6 +1,7 @@
 package io.github.liotto1337.claudevm.bridge
 
 import android.content.Context
+import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.net.NetworkWatch
 import io.github.liotto1337.claudevm.secrets.KeyImport
 import io.github.liotto1337.claudevm.secrets.SecretStore
@@ -140,6 +141,9 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
 
     fun setBackground(b: Background) {
         val changed = b.sessions != background.sessions
+        // Сняли «Отслеживать» (или сессию удалили) — её уведомление больше не нужно. Здесь, а не в опросе:
+        // снять отметку можно только в открытом приложении, а тогда опрос своих состояний не помнит
+        appCtx?.let { ctx -> for (gone in background.watched - b.watched) Notifications.cancelSession(ctx, gone) }
         background = b
         sync()
         if (changed) onChange?.invoke()
