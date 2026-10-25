@@ -60,6 +60,7 @@ async function open(session = 'cvg-ctx-a', phone = false): Promise<Launched> {
 }
 const badge = (page: Page) => page.getByRole('button', { name: /^Контекст/ });
 const panel = (page: Page) => page.getByRole('dialog', { name: 'Контекст' });
+const refresh = (page: Page) => panel(page).getByRole('button', { name: 'Обновить разбивку' });
 
 test('значок, панель с разбивкой из /context, /context не в ленте', async () => {
   const { app, page } = await open();
@@ -67,6 +68,11 @@ test('значок, панель с разбивкой из /context, /context �
     await expect(badge(page)).toHaveText('Контекст 832.3k', { timeout: 15_000 });
     await badge(page).click();
     await expect(panel(page)).toBeVisible();
+    // открытие панели само /context не шлёт: его вывод занимает контекст сессии
+    await page.waitForTimeout(1500);
+    expect(commands('/context')).toBe(0);
+    await expect(panel(page)).toContainText('Разбивка недоступна');
+    await refresh(page).click();
     await expect.poll(() => commands('/context'), { timeout: 10_000 }).toBe(1);
     await expect(badge(page)).toHaveText('Контекст 83 %', { timeout: 10_000 });
     await expect(badge(page)).toHaveClass(/context-warn/);
@@ -76,7 +82,7 @@ test('значок, панель с разбивкой из /context, /context �
     await expect(panel(page)).toContainText('Токенов до автосжатия: 134.7k');
     await expect(panel(page).getByRole('listitem').filter({ hasText: 'Skills' })).toContainText('1.0 %');
     await expect(page.getByRole('region', { name: 'Переписка' })).not.toContainText('Context Usage');
-    // повторное открытие в течение 10 с — без второго /context
+    // повторное открытие — без второго /context
     await badge(page).click();
     await expect(panel(page)).toBeHidden();
     await badge(page).click();
@@ -93,6 +99,7 @@ test('«Сжать сессию»: диалог с пожеланиями → /c
   try {
     await expect(badge(page)).toHaveText('Контекст 832.3k', { timeout: 15_000 });
     await badge(page).click();
+    await refresh(page).click();
     await expect(badge(page)).toHaveText('Контекст 83 %', { timeout: 10_000 });
     await panel(page).getByRole('button', { name: 'Сжать сессию' }).click();
     const dialog = page.getByRole('dialog', { name: 'Сжать сессию?' });
@@ -103,9 +110,9 @@ test('«Сжать сессию»: диалог с пожеланиями → /c
     await expect.poll(() => tmux('capture-pane', '-p', '-t', 'cvg-ctx-a'), { timeout: 10_000 }).toContain('› /compact сохрани план');
     // после сжатия ответа ещё нет: сколько занято — неизвестно, а не прежние 83 %
     await expect(badge(page)).toHaveText('Контекст —', { timeout: 10_000 });
-    // свежий /context после сжатия (через 10 с) даёт число и без ответа
-    await page.waitForTimeout(10_500);
+    // свежий /context после сжатия даёт число и без ответа
     await badge(page).click();
+    await refresh(page).click();
     await expect.poll(() => commands('/context'), { timeout: 10_000 }).toBe(2);
     await expect(badge(page)).toHaveText('Контекст 2 %', { timeout: 10_000 });
   } finally {
@@ -133,6 +140,7 @@ test('пока Claude работает: кнопка неактивна, /contex
   try {
     await expect(badge(page)).toHaveText('Контекст 832.3k', { timeout: 15_000 });
     await badge(page).click();
+    await refresh(page).click();
     await expect(badge(page)).toHaveText('Контекст 83 %', { timeout: 10_000 });
     await badge(page).click();
     await page.getByRole('textbox', { name: 'Сообщение для Claude' }).fill('busy');
@@ -142,6 +150,8 @@ test('пока Claude работает: кнопка неактивна, /contex
     const compact = panel(page).getByRole('button', { name: 'Сжать сессию' });
     await expect(compact).toBeDisabled();
     await expect(compact).toHaveAttribute('title', 'Дождитесь окончания ответа');
+    await expect(refresh(page)).toBeDisabled();
+    await expect(refresh(page)).toHaveAttribute('title', 'Дождитесь окончания ответа');
     await expect(panel(page)).toContainText(/Разбивка на \d\d:\d\d/);
     expect(commands('/context')).toBe(1);
   } finally {
@@ -149,11 +159,12 @@ test('пока Claude работает: кнопка неактивна, /contex
   }
 });
 
-test('открыли панель и сразу переключились — /context не уходит в другую сессию', async () => {
+test('нажали «Обновить разбивку» и сразу переключились — /context не уходит в другую сессию', async () => {
   const { app, page } = await open();
   try {
     await expect(badge(page)).toHaveText('Контекст 832.3k', { timeout: 15_000 });
     await badge(page).click();
+    await refresh(page).click();
     await page.getByRole('navigation', { name: 'Сессии' }).getByRole('button', { name: /^cvg-ctx-b\b/ }).click();
     await page.waitForTimeout(4000);
     expect(commands('/context', otherCwd)).toBe(0);
@@ -168,6 +179,7 @@ test('телефон: на значке «83 %», панель — нижним 
     await expect(badge(page)).toHaveText('832.3k', { timeout: 15_000 });
     await badge(page).tap();
     await expect(panel(page)).toBeVisible();
+    await refresh(page).tap();
     await expect(badge(page)).toHaveText('83 %', { timeout: 10_000 });
     await expect(panel(page)).toContainText('Использовано: 83 %');
     await expect(panel(page)).toContainText('Messages');
