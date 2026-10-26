@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SshConnection } from '../../bridge/ssh';
@@ -66,5 +66,24 @@ describe.skipIf(!hasTestKey)('папка outbox: чтение, проверка 
     await upload.cleanup();
     expect(existsSync(old)).toBe(false);
     expect(existsSync(fresh)).toBe(true);
+  });
+
+  it('мост: обрыв связи посреди скачивания — недокачанного файла нет', async () => {
+    const big = put('cvg-test-cut.bin', 'x'.repeat(20 * 1024 * 1024));
+    const c = new SshConnection(testConfig(), { knownHostsPath: tempKnownHosts(), askHostKey: async () => true });
+    expect((await c.connect()).ok).toBe(true);
+    const dir = mkdtempSync(join(tmpdir(), 'cvg-dl-cut-'));
+    const dest = join(dir, 'cut.bin');
+    let closed = false;
+    await expect(
+      new NodeTransport(c).readFile(big, dest, (sent) => {
+        if (!closed && sent > 1024 * 1024) {
+          closed = true;
+          c.close();
+        }
+      }),
+    ).rejects.toThrow();
+    expect(readdirSync(dir)).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

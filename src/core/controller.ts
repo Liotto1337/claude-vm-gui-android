@@ -111,6 +111,8 @@ export class AppController {
   };
 
   outboxOpenHtml = async (path: string): Promise<Result<void>> => {
+    // браузером открываются только страницы: .apk из outbox открыл бы установщик
+    if (typeof path !== 'string' || !/\.html?$/i.test(path)) return fail('BAD_PATH', 'Открыть в браузере можно только страницу .html');
     const r = await this.outboxDownload(path, 'view-html');
     if (!r.ok) return r;
     return this.platform.files!.open(r.data.uri, r.data.name);

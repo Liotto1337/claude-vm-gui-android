@@ -95,3 +95,17 @@ test('телефон: «Сохранить» касанием — файл в «
     await app.close();
   }
 });
+
+test('«Открыть в браузере» открывает только HTML — и при прямом вызове из страницы', async () => {
+  const { app, page } = await open();
+  try {
+    await ask(page);
+    await expect(card(page, 'bundle.zip')).toBeVisible({ timeout: 15_000 });
+    const r = await page.evaluate((p) => (window as unknown as { api: { outbox: { openHtml(p: string): Promise<unknown> } } }).api.outbox.openHtml(p), file('bundle.zip'));
+    expect(r).toMatchObject({ ok: false, error: { code: 'BAD_PATH' } });
+    expect(await hooks(page)).toBeNull();
+    expect(readdirSync(downloads)).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
