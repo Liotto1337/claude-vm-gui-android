@@ -9,7 +9,7 @@ import { getDraft, restoreFailed, setDraft, updateDraft, useDraft } from '../dra
 import { AttachmentChip } from './AttachmentChip';
 import { BottomSheet } from './BottomSheet';
 import { ChoiceList, ChoiceMenu, type Choice } from './ChoiceMenu';
-import { EffortSlider } from './EffortSlider';
+import { EffortButton, EffortScale } from './EffortButton';
 import { HintPopup, type HintItem } from './HintPopup';
 import { IconArrowUp, IconChevron, IconClip } from './icons';
 import { usePhone } from '../use-phone';
@@ -310,7 +310,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
                   selected={choice.model}
                   onSelect={pickModel}
                 />
-                <EffortSlider levels={efforts} value={choice.effort} onCommit={pickEffort} />
+                <EffortButton levels={efforts} value={choice.effort} onCommit={pickEffort} />
               </>
             )}
             {chatMode && working && !menuOpen ? (
@@ -330,8 +330,8 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
           <ChoiceList choices={modelChoices} selected={choice.model} onSelect={pickModel} />
         </div>
         <div className="sheet-section">
-          <div className="caption choice-title">Effort · отправит /effort, когда отпустите ползунок</div>
-          <EffortSlider levels={efforts} value={choice.effort} onCommit={pickEffort} />
+          <div className="caption choice-title">Effort · отправит /effort</div>
+          <EffortScale levels={efforts} value={choice.effort} onCommit={pickEffort} />
         </div>
       </BottomSheet>
     </div>

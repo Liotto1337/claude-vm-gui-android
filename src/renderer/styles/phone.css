@@ -108,5 +108,12 @@
 }
 
 /* Effort ползунком в листе «Модель и effort»: на всю ширину, удобно пальцу */
-.sheet-section .effort { display: flex; padding: 8px 12px; }
-.sheet-section .effort input[type='range'] { flex: 1; height: 32px; }
+.sheet-section .effort-scale { padding: 4px 12px 8px; }
+/* Подписи уровней — в зоне касания */
+.sheet-section .effort-labels { height: 52px; }
+.sheet-section .effort-label { min-height: 48px; min-width: 48px; font-size: 13px; }
+.sheet-section .effort-scale input[type='range'] { height: 32px; }
+/* Кнопки карточек файлов Claude — в зоне касания */
+@media (max-width: 839.98px) {
+  .outbox-actions .btn { min-height: 48px; }
+}

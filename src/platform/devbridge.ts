@@ -19,14 +19,14 @@ class BridgeError extends Error {
   }
 }
 
-export type DevBridge = ConnectableTransport & { call(r: BridgeRequest): Promise<unknown> };
+export type DevBridge = ConnectableTransport & { call(r: BridgeRequest, onProgress?: (n: number, total?: number) => void): Promise<unknown> };
 
 /** SSH через dev-мост (bridge/server.ts): для браузера и E2E, в APK не попадает. */
 export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: string) => SocketLike } = {}): DevBridge {
   const WS = opts.WebSocket ?? (globalThis.WebSocket as unknown as new (url: string) => SocketLike);
   const ws = new WS(url);
   const events = new Emitter();
-  const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void; onProgress?: (n: number) => void }>();
+  const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void; onProgress?: (n: number, total?: number) => void }>();
   const channels = new Map<number, SeqChannel>();
   const queue: string[] = [];
   let nextId = 1;
@@ -83,12 +83,12 @@ export function devBridgeTransport(url: string, opts: { WebSocket?: new (url: st
         break;
       }
       case 'progress':
-        pending.get(m.id)?.onProgress?.(m.sent);
+        pending.get(m.id)?.onProgress?.(m.sent, m.total);
         break;
     }
   };
 
-  const call = (r: BridgeRequest, onProgress?: (n: number) => void): Promise<unknown> => {
+  const call = (r: BridgeRequest, onProgress?: (n: number, total?: number) => void): Promise<unknown> => {
     if (closed) return Promise.reject(new BridgeError('NOT_CONNECTED', 'NOT_CONNECTED'));
     const id = nextId++;
     const msg = JSON.stringify({ id, ...r });

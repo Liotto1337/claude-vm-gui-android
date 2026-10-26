@@ -9,8 +9,11 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import io.github.liotto1337.claudevm.files.Downloads
 import io.github.liotto1337.claudevm.notify.Notifications
 import io.github.liotto1337.claudevm.bridge.ChunkBatcher
 import io.github.liotto1337.claudevm.bridge.PluginArgs
@@ -25,10 +28,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.OutputStream
 import java.util.Base64
 
 /** Мост JS ↔ SshHub. Контракт — VmBridgePlugin в src/platform/android.ts. */
-@CapacitorPlugin(name = "VmBridge", permissions = [Permission(alias = "notifications", strings = [Manifest.permission.POST_NOTIFICATIONS])])
+@CapacitorPlugin(
+    name = "VmBridge",
+    permissions = [
+        Permission(alias = "notifications", strings = [Manifest.permission.POST_NOTIFICATIONS]),
+        // Сохранение в «Загрузки» на Android 8–9 (с Android 10 — MediaStore без разрешений)
+        Permission(alias = "storage", strings = [Manifest.permission.WRITE_EXTERNAL_STORAGE]),
+    ],
+)
 class VmBridgePlugin : Plugin() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var hub: SshHub
@@ -174,5 +185,53 @@ class VmBridgePlugin : Plugin() {
     @PermissionCallback
     private fun notificationsResult(call: PluginCall) {
         call.resolve(JSObject().put("granted", getPermissionState("notifications") == PermissionState.GRANTED))
+    }
+
+    /** Файл outbox по SFTP прямо в «Загрузки» (target downloads) или в кэш для просмотра (view-html). */
+    @PluginMethod fun downloadFile(call: PluginCall) {
+        if (call.getString("target") != "view-html" && Build.VERSION.SDK_INT < 29 && getPermissionState("storage") != PermissionState.GRANTED) {
+            requestPermissionForAlias("storage", call, "storageResult")
+            return
+        }
+        download(call)
+    }
+
+    @PermissionCallback
+    private fun storageResult(call: PluginCall) {
+        if (getPermissionState("storage") == PermissionState.GRANTED) download(call)
+        else call.reject("Нет разрешения на запись в «Загрузки»", "PERMISSION")
+    }
+
+    private fun download(call: PluginCall) = run(call) {
+        val path = call.getString("path") ?: ""
+        val name = call.getString("name") ?: "file"
+        val id = call.getString("id") ?: ""
+        var shown = 0L
+        val write: (OutputStream) -> Unit = { out ->
+            hub.readFile(path, out) { sent, total ->
+                // не чаще раза в 100 мс: мост Capacitor — строки JSON
+                val now = System.currentTimeMillis()
+                if (sent == total || now - shown >= 100) {
+                    shown = now
+                    notifyListeners("downloadProgress", JSObject().put("id", id).put("sent", sent).put("total", total))
+                }
+            }
+        }
+        val uri = if (call.getString("target") == "view-html") Downloads.cacheForView(context, name, write) else Downloads.save(context, name, write)
+        JSObject().put("uri", uri.toString())
+    }
+
+    /** Открыть файл приложением по выбору системы (страницу — браузером, APK — установщиком). */
+    @PluginMethod fun openUri(call: PluginCall) = run(call) {
+        val uri = Uri.parse(call.getString("uri") ?: "")
+        val mime = call.getString("name")?.let { Downloads.mimeOf(it) } ?: context.contentResolver.getType(uri) ?: "*/*"
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(view)
+        } catch (e: ActivityNotFoundException) {
+            throw IllegalStateException("Нет приложения, чтобы открыть файл")
+        }
+        null
     }
 }

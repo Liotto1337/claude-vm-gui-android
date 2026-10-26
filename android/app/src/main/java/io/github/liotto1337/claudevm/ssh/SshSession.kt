@@ -1,5 +1,7 @@
 package io.github.liotto1337.claudevm.ssh
 
+import java.io.OutputStream
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -399,6 +401,32 @@ class SshSession(
             }
         } catch (e: Exception) {
             // Сломанный клиент не держим: следующая запись откроет новый
+            dropSftp(sftp)
+            throw e
+        }
+    }
+
+    /**
+     * Файл с ВМ потоком в out (байты не идут через WebView); onProgress(получено, всего). Обрыв или недобор байт —
+     * исключение, сломанный клиент SFTP сбрасывается.
+     */
+    fun readFile(path: String, out: OutputStream, onProgress: (Long, Long) -> Unit) {
+        val sftp = sftpFor(need())
+        try {
+            sftp.open(path, EnumSet.of(OpenMode.READ)).use { f ->
+                val total = f.length()
+                val buf = ByteArray(ChunkSeq.MAX)
+                var off = 0L
+                while (off < total) {
+                    val n = f.read(off, buf, 0, minOf(buf.size.toLong(), total - off).toInt())
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    off += n
+                    onProgress(off, total)
+                }
+                if (off < total) throw IOException("Связь с ВМ прервалась")
+            }
+        } catch (e: Exception) {
             dropSftp(sftp)
             throw e
         }

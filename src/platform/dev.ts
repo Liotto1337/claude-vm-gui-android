@@ -1,4 +1,4 @@
-import { ok } from '@shared/ipc';
+import { fail, ok } from '@shared/ipc';
 import type { Platform, Prefs } from '@core/platform';
 import { devBridgeTransport } from './devbridge';
 
@@ -16,6 +16,8 @@ export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Pl
   const bridge = devBridgeTransport(url);
   const hooks: {
     lastLink?: string;
+    /** Последний файл, открытый «приложением по выбору системы» (outbox) */
+    lastOpened?: { uri: string; name?: string };
     dropConnection?: () => void;
     /** Соединение закрыли снаружи (кнопка «Отключиться» в уведомлении Android) */
     disconnectNative?: () => void;
@@ -72,6 +74,21 @@ export function devPlatform(url: string, opts: { testHooks?: boolean } = {}): Pl
     openExternal: async (url) => {
       if (opts.testHooks) hooks.lastLink = url;
       else window.open(url, '_blank', 'noopener');
+    },
+    // Файлы outbox: мост сохраняет их у себя на диске (браузер не может открыть локальный файл — только запоминаем)
+    files: {
+      download: async (o, onProgress) => {
+        try {
+          const r = (await bridge.call({ op: 'downloadFile', ...o }, (sent, total) => onProgress(sent, total ?? sent))) as { uri: string };
+          return ok(r);
+        } catch (e) {
+          return fail('DOWNLOAD_FAILED', (e as Error).message);
+        }
+      },
+      open: async (uri, name) => {
+        hooks.lastOpened = name === undefined ? { uri } : { uri, name };
+        return ok(undefined);
+      },
     },
   };
 }

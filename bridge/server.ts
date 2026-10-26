@@ -1,10 +1,10 @@
 // Dev-мост: SSH из браузера через Node (ssh2). Только для разработки и E2E, в APK не попадает.
 //   npm run bridge — слушает 127.0.0.1:${CVG_BRIDGE_PORT ?? 8790}
 //   CVG_KNOWN_HOSTS — свой known_hosts; CVG_BRIDGE_KEY — путь к ключу; CVG_BRIDGE_PASSWORD — пароль
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { homedir, tmpdir } from 'node:os';
+import { extname, join } from 'node:path';
 import { utils, type ClientChannel } from 'ssh2';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { fail, ok, type HostKeyPrompt, type VmConfig } from '../src/shared/ipc';
@@ -119,6 +119,19 @@ function session(ws: WebSocket): void {
         const { NodeTransport } = await import('./node-transport');
         await new NodeTransport(need()).writeFile(r.path, Buffer.from(r.b64, 'base64'), (sent) => ev({ ev: 'progress', id, sent }));
         return null;
+      }
+      case 'downloadFile': {
+        // Как Kotlin: «Загрузки» — без перезаписи («имя (1).ext»), просмотр — своя папка на каждое открытие
+        const { NodeTransport } = await import('./node-transport');
+        const root = process.env.CVG_DEV_DOWNLOADS ?? join(tmpdir(), 'cvg-dev-downloads');
+        const name = r.name.replace(/[/\\]/g, '_') || 'file';
+        const dir = r.target === 'downloads' ? join(root, 'downloads') : join(root, 'view-html', randomUUID());
+        mkdirSync(dir, { recursive: true });
+        const ext = extname(name);
+        let dest = join(dir, name);
+        for (let n = 1; existsSync(dest); n++) dest = join(dir, `${name.slice(0, name.length - ext.length)} (${n})${ext}`);
+        await new NodeTransport(need()).readFile(r.path, dest, (sent, total) => ev({ ev: 'progress', id, sent, total }));
+        return { uri: dest };
       }
       case 'answerHostKey':
         hostKeyAnswer?.(r.trust === true);

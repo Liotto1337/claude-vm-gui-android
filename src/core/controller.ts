@@ -83,6 +83,7 @@ export class AppController {
   metricsInfo = () => this.need((s) => s.metrics.info());
   usageLatest = async () => this.s?.usage.latest ?? null;
   chatKey = (k: MenuKey, session?: string) => this.need((s) => s.term.key(k, session));
+  chatKeys = (ks: MenuKey[], session?: string) => this.need((s) => s.term.keys(ks, session));
   chatTypeText = (t: string, session?: string) => this.need((s) => s.term.typeText(t, session));
   chatLoadEarlier = () => this.need((s) => s.transcript.loadEarlier());
 
@@ -91,6 +92,33 @@ export class AppController {
   hintsDirs = (partial: string) => this.need((s) => s.hints.dirs(partial));
   uploadFile = (id: string, bytes: Uint8Array, name: string) => this.need((s) => s.upload.file(id, bytes, name));
   uploadRead = (path: string, maxBytes: number) => this.need((s) => s.upload.read(path, maxBytes));
+
+  /** Файл outbox: проверка пути — здесь, скачивание — платформой (Kotlin пишет прямо в «Загрузки» или кэш). */
+  private outboxDownload = (path: string, target: 'downloads' | 'view-html') =>
+    this.need(async (s): Promise<Result<{ uri: string; name: string }>> => {
+      const files = this.platform.files;
+      if (!files) return fail('DOWNLOAD_FAILED', 'Скачивание файлов недоступно');
+      const f = await s.upload.outboxFile(path);
+      if (!f.ok) return f;
+      const name = path.slice(path.lastIndexOf('/') + 1);
+      const r = await files.download({ path: f.data.real, name, target }, (sent, total) => this.emit('outbox:progress', { path, sent, total }));
+      return r.ok ? ok({ uri: r.data.uri, name }) : r;
+    });
+
+  outboxSave = async (path: string): Promise<Result<{ savedTo: string } | null>> => {
+    const r = await this.outboxDownload(path, 'downloads');
+    return r.ok ? ok({ savedTo: r.data.uri }) : r;
+  };
+
+  outboxOpenHtml = async (path: string): Promise<Result<void>> => {
+    const r = await this.outboxDownload(path, 'view-html');
+    if (!r.ok) return r;
+    return this.platform.files!.open(r.data.uri, r.data.name);
+  };
+
+  outboxReveal = (uri: string): void => {
+    if (typeof uri === 'string') void this.platform.files?.open(uri);
+  };
 
   private async need<T>(fn: (s: Services) => Promise<Result<T>>): Promise<Result<T>> {
     if (!this.s || !this.s.conn.connected) return fail('NOT_CONNECTED', 'Нет подключения к ВМ');

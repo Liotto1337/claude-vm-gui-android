@@ -22,4 +22,10 @@ class ManifestTest {
         val providers = ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.GET_PROVIDERS).providers.orEmpty()
         assertTrue(providers.any { it.authority == "${ctx.packageName}.fileprovider" })
     }
+
+    @Test fun `запись в «Загрузки» запрашивается только для Android 8–9`() {
+        // PackageManager Robolectric (новый SDK) такое разрешение не показывает — проверяем сам манифест
+        val manifest = java.io.File("src/main/AndroidManifest.xml").readText()
+        assertTrue(Regex("""WRITE_EXTERNAL_STORAGE"\s+android:maxSdkVersion="28"""").containsMatchIn(manifest))
+    }
 }

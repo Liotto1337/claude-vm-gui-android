@@ -3,6 +3,8 @@
 export type Result<T> = { ok: true; data: T } | { ok: false; error: { code: ErrorCode; message: string } };
 
 export type ErrorCode =
+  | 'DOWNLOAD_FAILED'
+  | 'PERMISSION'
   | 'TCP_UNREACHABLE'
   | 'AUTH_FAILED'
   | 'HOSTKEY_MISMATCH'
@@ -129,7 +131,7 @@ export interface ChatImage { mediaType: string; data: string }
 /** Элемент ленты переписки (из журнала Claude Code). files — пути вложений из папки загрузок на ВМ. */
 export type ChatItem =
   | { kind: 'user'; id: string; text: string; images: ChatImage[]; files: string[] }
-  | { kind: 'assistant'; id: string; text: string }
+  | { kind: 'assistant'; id: string; text: string; files: string[] }
   | { kind: 'thinking'; id: string }
   | { kind: 'note'; id: string; text: string }
   | {
@@ -168,6 +170,13 @@ export type LayoutItem =
 /** Клавиши, которые интерфейс может отправить в claude (карточка меню, «Остановить»). */
 export type MenuKey = 'up' | 'down' | 'left' | 'right' | 'enter' | 'esc' | 'tab' | 'shift-tab' | 'space'
   | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+
+/** Прогресс скачивания файла outbox: path — путь на ВМ */
+export interface OutboxProgress {
+  path: string;
+  sent: number;
+  total: number;
+}
 
 export interface MenuOption {
   n: number | null; label: string; description: string; selected: boolean;
@@ -251,6 +260,16 @@ export interface Api {
     /** Начало файла из папки загрузок (не больше maxBytes) и его полный размер; NOT_FOUND — удалён, BAD_PATH — путь вне папки */
     read(path: string, maxBytes: number): Promise<Result<{ bytes: Uint8Array; size: number; truncated: boolean }>>;
   };
+  /** Файлы, которые Claude положил в outbox (`~/.cache/claude-vm-gui/outbox`) */
+  outbox: {
+    /** Скачать в выбранное место (диалог «Сохранить как»); null — диалог отменили */
+    save(path: string): Promise<Result<{ savedTo: string } | null>>;
+    /** Скачать во временную папку и открыть браузером по умолчанию */
+    openHtml(path: string): Promise<Result<void>>;
+    /** Показать сохранённый файл: в папке (Windows), открыть (Android) */
+    reveal(savedTo: string): void;
+    onProgress(cb: (p: OutboxProgress) => void): Unsubscribe;
+  };
   clipboard: { read(): Promise<string>; write(text: string): void };
   layout: { get(): Promise<SidebarLayout>; save(l: SidebarLayout): Promise<Result<void>> };
   links: { open(url: string): void };
@@ -265,6 +284,8 @@ export interface Api {
     onUnavailable(cb: (e: { session: string; reason: string }) => void): Unsubscribe;
     loadEarlier(): Promise<Result<void>>;
     key(k: MenuKey, session?: string): Promise<Result<void>>;
+    /** Пачка клавиш ответа на меню: экран проверяется один раз */
+    keys(ks: MenuKey[], session?: string): Promise<Result<void>>;
     /** Текст в поле своего ответа меню (без Enter) */
     typeText(text: string, session?: string): Promise<Result<void>>;
   };

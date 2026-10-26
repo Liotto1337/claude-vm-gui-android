@@ -29,6 +29,10 @@ export interface VmBridgePlugin {
   setBackground(o: { keepAlive: boolean; notifications: boolean; tmux: string; sessions: number; watched: string[] }): Promise<void>;
   clearNotification(o: { name: string }): Promise<void>;
   requestNotifications(): Promise<{ granted: boolean }>;
+  /** Файл outbox по SFTP прямо в «Загрузки» или кэш; прогресс — событие downloadProgress с тем же id */
+  downloadFile(o: { path: string; name: string; target: 'downloads' | 'view-html'; id: string }): Promise<{ uri: string }>;
+  /** Открыть файл приложением по выбору системы (ACTION_VIEW); name — для типа файла */
+  openUri(o: { uri: string; name?: string }): Promise<void>;
   addListener(event: string, cb: (data: never) => void): Promise<{ remove(): Promise<void> }>;
 }
 
@@ -43,6 +47,9 @@ export interface AndroidDeps {
 }
 
 const err = (code: string, message: string) => fail(code as ErrorCode, message);
+/** Отказ вызова плагина (reject с code) — Result */
+const failed = (e: unknown) => err((e as { code?: string }).code ?? 'DOWNLOAD_FAILED', (e as Error).message);
+let downloads = 0;
 
 /** Android: SSH и секреты — в нативном плагине, данные каналов приходят base64-пачками с номерами seq. */
 export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
@@ -152,6 +159,29 @@ export async function androidPlatformWith(d: AndroidDeps): Promise<Platform> {
     },
     clipboard: d.clipboard,
     openExternal: d.openExternal,
+    files: {
+      download: async (o, onProgress) => {
+        const id = `dl-${++downloads}`;
+        const h = plugin.addListener('downloadProgress', ((e: { id: string; sent: number; total: number }) => {
+          if (e.id === id) onProgress(e.sent, e.total);
+        }) as (data: never) => void);
+        try {
+          return ok(await plugin.downloadFile({ ...o, id }));
+        } catch (e) {
+          return failed(e);
+        } finally {
+          void h.then((x) => x.remove());
+        }
+      },
+      open: async (uri, name) => {
+        try {
+          await plugin.openUri(name === undefined ? { uri } : { uri, name });
+          return ok(undefined);
+        } catch (e) {
+          return failed(e);
+        }
+      },
+    },
     onBack: d.onBack,
     minimize: d.minimize,
     onVisibility: d.onVisibility,

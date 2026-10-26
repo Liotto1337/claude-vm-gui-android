@@ -81,6 +81,7 @@ export async function launchApp(env: Record<string, string> = {}, opts: { viewpo
   const bridge = await startBridge({
     CVG_KNOWN_HOSTS: env.CVG_KNOWN_HOSTS ?? tempKnownHostsPath(),
     ...(typeof keyPath === 'string' && keyPath ? { CVG_BRIDGE_KEY: keyPath } : {}),
+    ...(env.CVG_DEV_DOWNLOADS ? { CVG_DEV_DOWNLOADS: env.CVG_DEV_DOWNLOADS } : {}),
   });
   const context = await chromium.launchPersistentContext(join(userData, 'profile'), {
     viewport: opts.viewport ?? { width: 1280, height: 800 },

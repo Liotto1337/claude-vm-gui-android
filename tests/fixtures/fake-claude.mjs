@@ -2,14 +2,15 @@
 // Фейковый Claude Code для тестов: рисует поле ввода как настоящий (линии «─», «❯», серая подсказка),
 // включает bracketed paste и воспроизводит баг: вставка «обрабатывается» 250 мс, всё пришедшее за это время
 // (в том числе Enter) теряется. Пишет sessions/<pid>.json и журнал, если задан CVG_CLAUDE_DIR.
-// Команды: «menu» — меню из трёх вариантов; «menu-multi» — множественный выбор (как Claude Code 2.1.308); «busy» — 3 с «работы»; «long» — длинный ответ в журнал;
+// Команды: «menu» — меню из трёх вариантов; «menu-multi» — множественный выбор (как Claude Code 2.1.308), «menu-multi5» — пять вариантов, второй отмечен, курсор на третьем; «menu-deaf» — меню, не слышащее клавиш; CVG_FAKE_KEYLOG — клавиши меню в файл; «busy» — 3 с «работы»; «long» — длинный ответ в журнал; «outbox» — четыре файла в outbox и ответ с путями к ним;
 // «grow» — ответ, который через 300 мс дописывается той же записью (тот же uuid).
 // Ответы пишут model и usage (832 300 в контексте); «/context» — вывод настоящего Claude Code 2.1.310 в журнал;
 // «/compact [текст]» — только сводка сжатия (как настоящий: ответа с usage до следующего сообщения нет).
 // CVG_FAKE_SLOW_ACCEPT=1 — поле очищается через 1200 мс после Enter. CVG_FAKE_SEED — начальный журнал (копируется при старте).
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const PASTE_MS = 250;
@@ -76,8 +77,8 @@ function draw() {
   if (multi) {
     // Как Claude Code 2.1.308: чекбоксы, «Submit» без номера, вкладка вопроса сверху
     out += `${rule()}\r\n←  ☐ Цвета  ✔ Submit  →\r\nКакие цвета?\r\n`;
-    OPTIONS.forEach((o, i) => (out += `${i === multi.selected ? '❯' : ' '} ${i + 1}. [${multi.checked.has(i) ? '✔' : ' '}] ${o}\r\n`));
-    out += `${multi.selected === OPTIONS.length ? '❯' : ' '}    Submit\r\n${rule()}\r\nEnter to select · ↑/↓ to navigate · Esc to cancel\r\n`;
+    multi.opts.forEach((o, i) => (out += `${i === multi.selected ? '❯' : ' '} ${i + 1}. [${multi.checked.has(i) ? '✔' : ' '}] ${o}\r\n`));
+    out += `${multi.selected === multi.opts.length ? '❯' : ' '}    Submit\r\n${rule()}\r\nEnter to select · ↑/↓ to navigate · Esc to cancel\r\n`;
   } else if (menu) {
     out += `${rule()}\r\n Выбор\r\n Что сделать?\r\n`;
     OPTIONS.forEach((o, i) => (out += ` ${i === menu.selected ? '❯' : ' '} ${i + 1}. ${o}\r\n`));
@@ -122,8 +123,29 @@ function submit() {
     const head = `Начало растущего ответа. ${'Слова идут одно за другим. '.repeat(6)}`;
     record('assistant', head, id);
     setTimeout(() => record('assistant', `${head}Хвост растущего ответа.`, id), 300);
+  } else if (text.trim() === 'outbox') {
+    // Как Claude по правилу из CLAUDE.md: файлы для пользователя — в outbox, путь — в ответе
+    const dir = join(homedir(), '.cache/claude-vm-gui/outbox');
+    const tag = process.env.CVG_FAKE_OUTBOX_TAG ?? 'cvg-test';
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${tag}-shot.png`), Buffer.from(PNG_1PX, 'base64'));
+    writeFileSync(join(dir, `${tag}-report.html`), '<!doctype html><title>Отчёт</title><h1>Отчёт</h1>');
+    writeFileSync(join(dir, `${tag}-notes.txt`), 'Заметки: всё готово');
+    writeFileSync(join(dir, `${tag}-bundle.zip`), randomBytes(2 * 1024 * 1024));
+    record(
+      'assistant',
+      `Скриншот: ${dir}/${tag}-shot.png.\n\nОтчёт: [отчёт](${dir}/${tag}-report.html)\n\nЗаметки: \`${dir}/${tag}-notes.txt\`\n\nАрхив: ${dir}/${tag}-bundle.zip`,
+    );
   } else if (text.trim() === 'menu-multi') {
-    multi = { selected: 0, checked: new Set() };
+    multi = { selected: 0, checked: new Set(), opts: OPTIONS };
+    writeSession('waiting');
+  } else if (text.trim() === 'menu-multi5') {
+    // пять вариантов, второй уже отмечен, курсор на третьем
+    multi = { selected: 2, checked: new Set([1]), opts: ['Красный', 'Зелёный', 'Синий', 'Жёлтый', 'Белый'] };
+    writeSession('waiting');
+  } else if (text.trim() === 'menu-deaf') {
+    // меню, которое не слышит клавиш: ответ «не принят»
+    menu = { selected: 0, deaf: true };
     writeSession('waiting');
   } else if (text.trim() === 'menu') {
     menu = { selected: 0 };
@@ -171,14 +193,16 @@ function finishPaste(text) {
 
 function onKey(k) {
   if (Date.now() < processingUntil) return; // вставка ещё обрабатывается — ввод теряется
+  if ((multi || menu) && process.env.CVG_FAKE_KEYLOG) appendFileSync(process.env.CVG_FAKE_KEYLOG, `${JSON.stringify({ k, t: Date.now() })}\n`);
+  if (menu?.deaf) return;
   if (multi) {
     if (k === '\x1b[A') multi.selected = Math.max(0, multi.selected - 1);
-    else if (k === '\x1b[B') multi.selected = Math.min(OPTIONS.length, multi.selected + 1);
-    else if ((k === ' ' || k === '\r') && multi.selected < OPTIONS.length) {
+    else if (k === '\x1b[B') multi.selected = Math.min(multi.opts.length, multi.selected + 1);
+    else if ((k === ' ' || k === '\r') && multi.selected < multi.opts.length) {
       if (multi.checked.has(multi.selected)) multi.checked.delete(multi.selected);
       else multi.checked.add(multi.selected);
     } else if (k === '\r') {
-      const picked = [...multi.checked].sort().map((i) => OPTIONS[i]).join(', ');
+      const picked = [...multi.checked].sort().map((i) => multi.opts[i]).join(', ');
       multi = null;
       history.push(`● выбраны: ${picked}`);
       record('assistant', `выбраны: ${picked}`);

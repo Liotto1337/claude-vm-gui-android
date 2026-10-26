@@ -29,6 +29,8 @@ function fakePlugin(over: Partial<VmBridgePlugin> = {}) {
     checkTcp: rec('checkTcp', { ok: true, ms: 1 }),
     secretsSave: rec('secretsSave', { ok: true }),
     secretsHas: rec('secretsHas', { value: 'no' }),
+    downloadFile: rec('downloadFile', { uri: 'content://dl/1' }),
+    openUri: rec('openUri', undefined),
     addListener: async (event: string, cb: Listener) => {
       listeners.set(event, [...(listeners.get(event) ?? []), cb]);
       return { remove: async () => {} };
@@ -151,5 +153,42 @@ describe('Android-платформа', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(got).toEqual(['рано']);
     expect(closed).toBe(1);
+  });
+
+  it('файл outbox: скачивание в плагине с прогрессом по своему id, открытие — openUri', async () => {
+    const { plugin, fire, calls } = fakePlugin({
+      downloadFile: async (args) => {
+        calls.push({ method: 'downloadFile', args });
+        const { id } = args as { id: string };
+        fire('downloadProgress', { id: 'чужой', sent: 1, total: 9 });
+        fire('downloadProgress', { id, sent: 5, total: 10 });
+        return { uri: 'content://dl/1' };
+      },
+    });
+    const p = await androidPlatformWith(deps(plugin));
+    const seen: [number, number][] = [];
+    const r = await p.files!.download({ path: '/root/.cache/claude-vm-gui/outbox/a.zip', name: 'a.zip', target: 'downloads' }, (s, t) => seen.push([s, t]));
+    expect(r).toEqual({ ok: true, data: { uri: 'content://dl/1' } });
+    expect(seen).toEqual([[5, 10]]);
+    expect(calls.find((c) => c.method === 'downloadFile')!.args).toMatchObject({ path: '/root/.cache/claude-vm-gui/outbox/a.zip', name: 'a.zip', target: 'downloads' });
+    expect(await p.files!.open('content://dl/1', 'a.zip')).toEqual({ ok: true, data: undefined });
+    expect(calls.find((c) => c.method === 'openUri')!.args).toEqual({ uri: 'content://dl/1', name: 'a.zip' });
+  });
+
+  it('файл outbox: отказ плагина (нет разрешения, обрыв) — Result с кодом и текстом', async () => {
+    const { plugin } = fakePlugin({
+      downloadFile: async () => {
+        throw Object.assign(new Error('Нет разрешения на запись в «Загрузки»'), { code: 'PERMISSION' });
+      },
+      openUri: async () => {
+        throw Object.assign(new Error('Нет приложения, чтобы открыть файл'), { code: 'SSH_ERROR' });
+      },
+    });
+    const p = await androidPlatformWith(deps(plugin));
+    expect(await p.files!.download({ path: '/x', name: 'x', target: 'downloads' }, () => {})).toEqual({
+      ok: false,
+      error: { code: 'PERMISSION', message: 'Нет разрешения на запись в «Загрузки»' },
+    });
+    expect(await p.files!.open('content://x')).toMatchObject({ ok: false, error: { message: 'Нет приложения, чтобы открыть файл' } });
   });
 });

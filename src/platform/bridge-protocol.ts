@@ -12,6 +12,8 @@ export type BridgeRequest =
   | { op: 'close'; ch: number }
   | { op: 'resize'; ch: number; rows: number; cols: number }
   | { op: 'writeFile'; path: string; b64: string }
+  /** Файл outbox в папку моста (CVG_DEV_DOWNLOADS/<target>), как Kotlin — в «Загрузки» или кэш */
+  | { op: 'downloadFile'; path: string; name: string; target: 'downloads' | 'view-html' }
   | { op: 'answerHostKey'; trust: boolean }
   | { op: 'forgetHostKey'; host: string; port: number }
   | { op: 'tcp'; host: string; port: number }
@@ -33,7 +35,7 @@ export type BridgeEvent =
   /** Пачки канала нумеруются с 0 подряд */
   | { ev: 'data' | 'stderr'; ch: number; seq: number; b64: string }
   | { ev: 'close'; ch: number }
-  /** Прогресс writeFile: id — номер запроса */
-  | { ev: 'progress'; id: number; sent: number };
+  /** Прогресс writeFile и downloadFile: id — номер запроса; total — размер скачиваемого файла */
+  | { ev: 'progress'; id: number; sent: number; total?: number };
 
 export type ConnectResult = Result<void>;

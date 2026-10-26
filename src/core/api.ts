@@ -91,6 +91,7 @@ export function createApi(p: Platform): Api {
     },
     hints: { get: c.hintsGet, files: c.hintsFiles, dirs: c.hintsDirs },
     upload: { file: c.uploadFile, onProgress: on('upload:progress'), read: c.uploadRead },
+    outbox: { save: c.outboxSave, openHtml: c.outboxOpenHtml, reveal: c.outboxReveal, onProgress: on('outbox:progress') },
     clipboard: {
       read: () => p.clipboard.read().catch(() => ''),
       write: (text) => {
@@ -122,6 +123,7 @@ export function createApi(p: Platform): Api {
       onUnavailable: on('chat:unavailable'),
       loadEarlier: c.chatLoadEarlier,
       key: c.chatKey,
+      keys: c.chatKeys,
       typeText: c.chatTypeText,
     },
     usage: { get: c.usageLatest, onSample: on('usage:sample') },

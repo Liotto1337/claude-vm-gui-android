@@ -21,6 +21,17 @@ export interface Platform {
   secrets: Secrets;
   clipboard: { read(): Promise<string>; write(text: string): Promise<void> };
   openExternal(url: string): Promise<void>;
+  /**
+   * Файлы outbox на устройстве: скачивание по SFTP прямо в «Загрузки» (downloads) или в кэш для просмотра
+   * (view-html), без передачи байтов в WebView; open — открыть скачанное приложением по выбору системы.
+   */
+  files?: {
+    download(
+      o: { path: string; name: string; target: 'downloads' | 'view-html' },
+      onProgress: (sent: number, total: number) => void,
+    ): Promise<Result<{ uri: string }>>;
+    open(uri: string, name?: string): Promise<Result<void>>;
+  };
   /** Кнопка «Назад» (Android) */
   onBack?(cb: () => void): () => void;
   /** Свернуть приложение (Android) */

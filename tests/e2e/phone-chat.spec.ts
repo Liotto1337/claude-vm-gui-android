@@ -58,7 +58,12 @@ test('«Модель и effort» — нижний лист: модель спи�
     await expect(sheet(page)).toBeVisible();
     await sheet(page).getByRole('menuitemradio', { name: /^Sonnet/ }).first().tap({ timeout: 30_000 });
     await expect.poll(pane).toContain('/model sonnet');
-    // Effort — ползунок: отпустили — уходит /effort
+    // Effort — шкала: подписи над делениями не ниже 48 px, касание подписи сразу шлёт /effort; ползунок — как раньше
+    const labels = sheet(page).locator('.effort-label');
+    await expect(labels).toHaveText(['low', 'medium', 'high', 'xhigh', 'max']);
+    for (const b of await Promise.all((await labels.all()).map((l) => l.boundingBox()))) expect(b!.height).toBeGreaterThanOrEqual(48);
+    await sheet(page).getByRole('button', { name: 'high', exact: true }).tap();
+    await expect.poll(pane).toContain('/effort high');
     await sheet(page).getByRole('slider', { name: 'Effort' }).fill('0');
     await expect.poll(pane).toContain('/effort low');
     await expect(btn).toContainText('Sonnet');
@@ -94,7 +99,7 @@ test('отправка касанием «Отправить» — сообще�
   }
 });
 
-test('карточка меню: варианты не ниже 48 px, касание выбирает', async () => {
+test('карточка меню: варианты не ниже 48 px, касание отмечает, «Ответить» отправляет', async () => {
   const { app, page } = await openFake();
   try {
     await composer(page).fill('menu');
@@ -103,6 +108,8 @@ test('карточка меню: варианты не ниже 48 px, каса�
     await expect(options).toHaveCount(3, { timeout: 10_000 });
     for (const box of await Promise.all((await options.all()).map((o) => o.boundingBox()))) expect(box!.height).toBeGreaterThanOrEqual(48);
     await card(page).getByRole('radio', { name: /Да и не спрашивать/ }).tap();
+    await expect(card(page).getByRole('radio', { name: /Да и не спрашивать/ })).toHaveAttribute('aria-checked', 'true', { timeout: 300 });
+    await card(page).getByRole('button', { name: 'Ответить' }).tap();
     await expect(card(page)).toBeHidden({ timeout: 5000 });
     await expect(feed(page).getByText('выбран 2')).toBeVisible({ timeout: 10_000 });
   } finally {

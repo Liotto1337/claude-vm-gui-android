@@ -130,6 +130,7 @@ class SshHub(private val secrets: SecretStore, private val knownHosts: File, pri
     fun closeChannel(ch: Int) = session?.close(ch)
     fun resize(ch: Int, cols: Int, rows: Int) = session?.resize(ch, cols, rows)
     suspend fun writeFile(path: String, data: ByteArray, offset: Long) = need().writeFile(path, data, offset) {}
+    fun readFile(path: String, out: java.io.OutputStream, onProgress: (Long, Long) -> Unit) = need().readFile(path, out, onProgress)
     fun forceReconnect() = session?.forceReconnect()
 
     fun close() {

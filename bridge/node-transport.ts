@@ -1,3 +1,4 @@
+import { createWriteStream, rmSync } from 'node:fs';
 import type { ClientChannel } from 'ssh2';
 import type { Channel, ExecResult, SshTransport } from '../src/core/transport';
 import type { SshConnection } from './ssh';
@@ -34,6 +35,30 @@ export class NodeTransport implements SshTransport {
 
   async openPty(cmd: string, cols: number, rows: number): Promise<Channel> {
     return asChannel(await this.conn.openPty(cmd, cols, rows));
+  }
+
+  /** Файл с ВМ целиком в dest потоком; обрыв или недобор байт — частичный файл удаляется. */
+  async readFile(path: string, dest: string, onProgress: (sent: number, total: number) => void): Promise<void> {
+    const sftp = await this.conn.sftp();
+    const total = await new Promise<number>((resolve, reject) => sftp.stat(path, (err, st) => (err ? reject(err) : resolve(st.size))));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const rs = sftp.createReadStream(path);
+        const ws = createWriteStream(dest, { mode: 0o600 });
+        let sent = 0;
+        rs.on('data', (c: Buffer) => {
+          sent += c.length;
+          onProgress(sent, total);
+        });
+        rs.on('error', reject);
+        ws.on('error', reject);
+        ws.on('finish', () => (sent < total ? reject(new Error('Связь с ВМ прервалась')) : resolve()));
+        rs.pipe(ws);
+      });
+    } catch (e) {
+      rmSync(dest, { force: true });
+      throw e;
+    }
   }
 
   async writeFile(path: string, bytes: Uint8Array, onProgress: (sent: number) => void): Promise<void> {
