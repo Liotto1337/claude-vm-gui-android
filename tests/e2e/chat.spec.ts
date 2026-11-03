@@ -461,6 +461,54 @@ test('вложения в ленте: картинка целиком, текс�
   }
 });
 
+test('несколько фото в сообщении — альбомом как в Telegram, просмотр листается', async () => {
+  const UPLOADS = join(homedir(), '.cache/claude-vm-gui/uploads');
+  const before = new Set(existsSync(UPLOADS) ? readdirSync(UPLOADS) : []);
+  const { app, page } = await open();
+  try {
+    await expect(feed(page)).toBeVisible({ timeout: 15_000 });
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.locator('input[type=file]').setInputFiles([1, 2, 3, 4].map((n) => ({ name: `img${n}.png`, mimeType: 'image/png', buffer: PNG })));
+    await expect(page.locator('.chip', { hasText: 'загружено' })).toHaveCount(4, { timeout: 15_000 });
+    await composer(page).fill('альбом');
+    await composer(page).press('Enter');
+    const bubble = feed(page).locator('.bubble:not(.is-sending)', { hasText: 'альбом' });
+    await expect(bubble).toBeVisible({ timeout: 15_000 });
+    const tiles = bubble.locator('.album .album-tile');
+    await expect(tiles).toHaveCount(4);
+    // Четыре квадрата: крупное слева, три справа столбиком, всё внутри пузыря
+    const box = async (i: number) => (await tiles.nth(i).boundingBox())!;
+    const [album, b0, b1, b2, b3] = [(await bubble.locator('.album').boundingBox())!, await box(0), await box(1), await box(2), await box(3)];
+    expect(b0.x).toBeLessThan(b1.x);
+    expect(Math.abs(b1.x - b2.x)).toBeLessThan(1);
+    expect(Math.abs(b2.x - b3.x)).toBeLessThan(1);
+    expect(b1.y).toBeLessThan(b2.y);
+    expect(b2.y).toBeLessThan(b3.y);
+    for (const b of [b0, b1, b2, b3]) {
+      expect(b.x).toBeGreaterThanOrEqual(album.x - 1);
+      expect(b.x + b.width).toBeLessThanOrEqual(album.x + album.width + 1);
+      expect(b.y + b.height).toBeLessThanOrEqual(album.y + album.height + 1);
+    }
+    // Просмотр: открывается на нажатом фото, листается стрелками и кнопками, на краях не зацикливается
+    await tiles.nth(2).click();
+    const box_ = page.locator('.lightbox');
+    await expect(box_).toBeVisible();
+    await expect(box_.locator('.lightbox-count')).toHaveText('3 / 4');
+    await page.keyboard.press('ArrowRight');
+    await expect(box_.locator('.lightbox-count')).toHaveText('4 / 4');
+    await page.keyboard.press('ArrowRight');
+    await expect(box_.locator('.lightbox-count')).toHaveText('4 / 4');
+    await expect(box_.getByRole('button', { name: 'Следующее фото' })).toHaveCount(0);
+    await box_.getByRole('button', { name: 'Предыдущее фото' }).click();
+    await expect(box_.locator('.lightbox-count')).toHaveText('3 / 4');
+    await page.keyboard.press('Escape');
+    await expect(box_).toHaveCount(0);
+  } finally {
+    await app.close();
+    if (existsSync(UPLOADS)) for (const f of readdirSync(UPLOADS)) if (!before.has(f)) rmSync(join(UPLOADS, f));
+  }
+});
+
 test('множественный выбор в ленте: чекбоксы и «Готово»', async () => {
   const { app, page } = await open();
   try {

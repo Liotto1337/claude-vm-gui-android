@@ -1,8 +1,10 @@
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { ChatItem } from '@shared/ipc';
+import { displayName, isImageName } from '@shared/upload-name';
 import { FileView, JournalImage, OutboxFile } from './FileView';
 import { IconChevron, IconChevronRight } from './icons';
 import { Markdown } from './Markdown';
+import { PhotoGrid } from './PhotoGrid';
 import { TypedMarkdown } from './TypedMarkdown';
 
 type Tool = Extract<ChatItem, { kind: 'tool' }>;
@@ -59,23 +61,32 @@ function ToolView({ tool }: { tool: Tool }) {
   );
 }
 
+/** Сообщение клиента: фото — одним альбомом, картинки без данных (значок) и прочие файлы — как раньше, потом текст. */
+function UserBubble({ item }: { item: Extract<ChatItem, { kind: 'user' }> }) {
+  const withData = useMemo(() => item.images.filter((im) => im.data), [item.images]);
+  const paths = useMemo(() => item.files.filter((f) => isImageName(displayName(f))), [item.files]);
+  const album = withData.length + paths.length > 0;
+  return (
+    <div className={album ? 'bubble bubble-album' : 'bubble'}>
+      {item.images.filter((im) => !im.data).map((im, i) => (
+        <JournalImage key={i} image={im} />
+      ))}
+      {album ? <PhotoGrid images={withData} paths={paths} /> : null}
+      {item.files.filter((f) => !isImageName(displayName(f))).map((f) => (
+        <FileView key={f} path={f} />
+      ))}
+      {item.text ? <span className="bubble-text">{item.text}</span> : null}
+    </div>
+  );
+}
+
 /**
  * Один элемент ленты. typingSince — ответ только что пришёл и «печатается»; onTyped — «печать» закончилась.
  */
 export const ChatItemView = memo(function ChatItemView({ item, typingSince, onTyped }: { item: ChatItem; typingSince?: number; onTyped?: () => void }) {
   switch (item.kind) {
     case 'user':
-      return (
-        <div className="bubble">
-          {item.images.map((im, i) => (
-            <JournalImage key={i} image={im} />
-          ))}
-          {item.files.map((f) => (
-            <FileView key={f} path={f} />
-          ))}
-          {item.text ? <span className="bubble-text">{item.text}</span> : null}
-        </div>
-      );
+      return <UserBubble item={item} />;
     case 'assistant': {
       const text = typingSince !== undefined && onTyped ? <TypedMarkdown text={item.text} since={typingSince} onDone={onTyped} /> : <Markdown text={item.text} />;
       if (!item.files?.length) return text;

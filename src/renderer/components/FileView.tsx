@@ -9,7 +9,7 @@ import { FileCache } from '../file-cache';
 import { IconChevron, IconChevronRight, IconFile, IconImage } from './icons';
 import { Lightbox } from './Lightbox';
 
-const cache = new FileCache((p, n) => api.upload.read(p, n));
+export const fileCache = new FileCache((p, n) => api.upload.read(p, n));
 
 /** Картинка по ширине пузыря; нажатие — на весь экран. */
 function ImageBox({ src, alt }: { src: string; alt: string }) {
@@ -19,7 +19,7 @@ function ImageBox({ src, alt }: { src: string; alt: string }) {
       <button type="button" className="chat-image-btn" aria-label={`Открыть: ${alt}`} onClick={() => setOpen(true)}>
         <img className="chat-image" src={src} alt={alt} />
       </button>
-      {open ? <Lightbox src={src} alt={alt} onClose={() => setOpen(false)} /> : null}
+      {open ? <Lightbox images={[{ src, alt }]} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
@@ -42,7 +42,7 @@ function useFile(path: string, maxBytes: number): Loaded {
   const [st, setSt] = useState<Loaded>({ kind: 'loading' });
   useEffect(() => {
     let alive = true;
-    void cache.get(path, maxBytes).then((r) => {
+    void fileCache.get(path, maxBytes).then((r) => {
       if (!alive) return;
       if (r.ok) setSt({ kind: 'ok', ...r.data });
       else setSt(r.error.code === 'NOT_FOUND' ? { kind: 'gone' } : { kind: 'error', message: r.error.message });
