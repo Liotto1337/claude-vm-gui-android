@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { hasTestKey, launchApp, TEST_KEY, trustedKnownHosts, withConfig, type Launched } from './helpers';
 
 // Телефон: поле ввода, лист «Модель и effort», лента. Сессии — на отдельном сервере tmux
@@ -31,10 +31,10 @@ async function openCat(): Promise<Launched> {
   return l;
 }
 /** Фейковый claude с журналом (как в chat.spec): лента, «menu» — карточка из трёх вариантов. */
-async function openFake(viewport = PHONE.viewport): Promise<Launched> {
+async function openFake(viewport = PHONE.viewport, seed?: string): Promise<Launched> {
   const claudeDir = mkdtempSync(join(tmpdir(), 'cvg-cd-'));
   const fake = join(__dirname, '../fixtures/fake-claude.mjs');
-  tmux('new-session', '-d', '-s', 'cvg-test-claude', '-x', '60', '-y', '40', `CVG_CLAUDE_DIR=${claudeDir} node ${fake}`);
+  tmux('new-session', '-d', '-s', 'cvg-test-claude', '-x', '60', '-y', '40', `CVG_CLAUDE_DIR=${claudeDir}${seed ? ` CVG_FAKE_SEED=${seed}` : ''} node ${fake}`);
   const userData = withConfig({ host: '127.0.0.1', port: 22, username: 'root', keyPath: TEST_KEY, theme: 'light' });
   const l = await launchApp(
     { CVG_USER_DATA: userData, CVG_KNOWN_HOSTS: trustedKnownHosts(), CVG_TMUX_SOCKET: SOCK, CVG_CLAUDE_DIR: claudeDir },
@@ -184,3 +184,40 @@ async function swipe(page: Page, x: number, y: number, y2: number) {
   for (let py = y + 30; py <= y2; py += 30) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(py) });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
+
+/** Долгое нажатие пальцем: касание и удержание 700 мс. */
+async function hold(page: Page, target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  const b = (await target.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+  await page.waitForTimeout(700);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+test('закрепление: долгое нажатие → лист «Прикрепить» → панель под шапкой → «Открепить»', async () => {
+  const { app, page } = await openFake(PHONE.viewport, join(__dirname, '../fixtures/transcript.jsonl'));
+  try {
+    const msg = feed(page).locator('.chat-item-user', { hasText: /^привет$/ });
+    await expect(msg).toBeVisible({ timeout: 15_000 });
+    const bar = feed(page).getByRole('button', { name: /^Закреплённое сообщение/ });
+    await expect(bar).toHaveCount(0);
+
+    await hold(page, msg);
+    const sheet = page.getByRole('dialog', { name: 'Сообщение' });
+    await sheet.getByRole('menuitem', { name: 'Прикрепить' }).tap();
+    await expect(bar).toContainText('привет');
+
+    // Нажатие по панели — переход к сообщению: лента (она была внизу) прокручивается к нему
+    await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(msg).not.toBeInViewport();
+    await bar.tap();
+    await expect(msg).toBeInViewport();
+
+    await hold(page, msg);
+    await page.getByRole('dialog', { name: 'Сообщение' }).getByRole('menuitem', { name: 'Открепить' }).tap();
+    await expect(bar).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
