@@ -81,8 +81,14 @@ test('APK: подключение, лента, поворот, уведомле�
     const feed = page.getByRole('region', { name: 'Переписка' });
     await expect(feed).toBeVisible({ timeout: 60_000 });
     const composer = page.getByRole('textbox', { name: 'Сообщение для Claude' });
-    await composer.fill('привет с эмулятора');
+    await composer.fill('привет');
+    await composer.press('Enter');
+    await expect(composer).toHaveValue('привет\n');
+    await expect(feed.getByText('привет', { exact: true })).toHaveCount(0);
+    await composer.pressSequentially('с эмулятора');
+    await expect(composer).toHaveValue('привет\nс эмулятора');
     await page.getByRole('button', { name: 'Отправить' }).click();
+    await expect(composer).toHaveValue('');
     await expect(feed.getByText('привет с эмулятора', { exact: true })).toBeVisible({ timeout: 30_000 });
 
     // Поворот: связь и сессия на месте (Review Focus 1)

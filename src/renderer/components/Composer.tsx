@@ -22,6 +22,7 @@ const FALLBACK_MODELS: ModelInfo[] = [
 const FALLBACK_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** Команды, которых нет в ленте: пузырь «отправлено» им не нужен */
 const HIDDEN_COMMAND = /^\/context(\s|$)/;
+const enterSends = import.meta.env.MODE !== 'android';
 
 /**
  * Поле ввода. menu — открытое меню Claude Code (карточка в ленте, поле неактивно);
@@ -204,13 +205,14 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const submitKey = enterSends && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing;
     if (items.length > 0) {
       if (e.key === 'ArrowDown') return e.preventDefault(), setActive((i) => (i + 1) % items.length);
       if (e.key === 'ArrowUp') return e.preventDefault(), setActive((i) => (i - 1 + items.length) % items.length);
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) return e.preventDefault(), pick(active);
+      if (e.key === 'Tab' || submitKey) return e.preventDefault(), pick(active);
       if (e.key === 'Escape') return e.preventDefault(), setDismissed(caret);
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (submitKey) {
       e.preventDefault();
       void send();
     }
@@ -268,6 +270,7 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
             id="composer-input"
             ref={box}
             rows={2}
+            enterKeyHint={enterSends ? undefined : 'enter'}
             value={text}
             disabled={menuOpen}
             placeholder={menuOpen ? 'Сначала ответьте на вопрос в ленте' : 'Напишите сообщение…'}
@@ -323,7 +326,12 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
         </div>
       </div>
       {sendError ? <p className="form-error" role="alert">{sendError}</p> : null}
-      {phone ? null : <div className="composer-help">Enter — отправить · Shift+Enter — новая строка · Ctrl+V или перетаскивание — файл</div>}
+      {phone ? null : (
+        <div className="composer-help">
+          {enterSends ? 'Enter — отправить · Shift+Enter — новая строка' : 'Enter — новая строка'}
+          {' · Ctrl+V или перетаскивание — файл'}
+        </div>
+      )}
       <BottomSheet open={sheet} title="Модель и effort" onClose={() => setSheet(false)}>
         <div role="menu" aria-label="Модель" className="sheet-section">
           <div className="caption choice-title">Модель · отправит /model</div>
