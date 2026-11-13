@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Тег без ключа подписи
         # Релиз с отладочной подписью не обновился бы поверх подписанной версии — лучше не выпускать
-        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_B64 == ''
+        if: (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/release/v0.5.1-rc.1') && env.KEYSTORE_B64 == ''
         run: |
           echo "::error::Релиз собирается только с ключом подписи: добавьте секреты ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
           exit 1
@@ -82,17 +82,33 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/release/v0.5.1-rc.1')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        if: github.ref == 'refs/heads/release/v0.5.1-rc.1'
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: claude-vm-android
           path: release
       - uses: softprops/action-gh-release@v3
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: release/*.apk
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
+      - name: Публикация пре-релиза v0.5.1-rc.1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/release/v0.5.1-rc.1'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v0.5.1-rc.1
+          target_commitish: ${{ github.sha }}
+          body_path: release-notes.md
+          files: release/*.apk
+          fail_on_unmatched_files: true
+          prerelease: true
+          make_latest: false
