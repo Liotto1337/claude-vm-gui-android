@@ -16,7 +16,7 @@ import { useBackContext } from '../back-stack';
 import { api } from '../api';
 import { setServerOpen } from '../state';
 
-export function MainView() {
+export function MainView({ onReport, reportOpen }: { onReport: () => void; reportOpen: boolean }) {
   const { sessions, current, chat, viewOverride, serverOpen, picked } = useAppState();
   // Диалог новой сессии; group — сразу положить её в эту группу
   const [newSession, setNewSession] = useState<{ group?: string } | null>(null);
@@ -40,12 +40,12 @@ export function MainView() {
     openDrawer,
     exit: () => api.platform.minimize(),
   });
-  const sidebar = <Sidebar onNewSession={(group) => setNewSession({ group })} />;
+  const sidebar = <Sidebar onReport={onReport} onNewSession={(group) => setNewSession({ group })} />;
 
   return (
     <div className="main-layout">
       {phone ? (
-        <Drawer open={drawerOpen} onOpen={openDrawer} onClose={closeDrawer}>
+        <Drawer swipeDisabled={reportOpen} open={drawerOpen} onOpen={openDrawer} onClose={closeDrawer}>
           {sidebar}
         </Drawer>
       ) : (

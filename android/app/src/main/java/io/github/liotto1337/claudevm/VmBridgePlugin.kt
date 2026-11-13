@@ -114,6 +114,15 @@ class VmBridgePlugin : Plugin() {
 
     @PluginMethod fun close(call: PluginCall) = run(call) { hub.close(); null }
 
+    @PluginMethod fun bugReportDeviceInfo(call: PluginCall) {
+        val info = JSObject()
+            .put("os", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            .put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
+            .put("architecture", Build.SUPPORTED_ABIS.firstOrNull())
+        activity?.let { info.put("webView", android.webkit.WebView.getCurrentWebViewPackage()?.versionName) }
+        call.resolve(info)
+    }
+
     @PluginMethod fun status(call: PluginCall) = run(call) { JSObject().put("connected", hub.status()) }
 
     @PluginMethod fun exec(call: PluginCall) = run(call) {

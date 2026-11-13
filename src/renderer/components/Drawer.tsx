@@ -5,8 +5,9 @@ const EDGE = 24;
 const SWIPE = 60;
 
 /** Выдвижная панель слева (телефон): кнопка ☰, свайп от левого края; касание фона закрывает. */
-export function Drawer({ open, onOpen, onClose, children }: { open: boolean; onOpen(): void; onClose(): void; children: ReactNode }) {
+export function Drawer({ open, onOpen, onClose, children, swipeDisabled }: { swipeDisabled: boolean; open: boolean; onOpen(): void; onClose(): void; children: ReactNode }) {
   useEffect(() => {
+    if (swipeDisabled) return;
     let start: { x: number; y: number } | null = null;
     const down = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -27,7 +28,7 @@ export function Drawer({ open, onOpen, onClose, children }: { open: boolean; onO
       document.removeEventListener('touchstart', down);
       document.removeEventListener('touchmove', move);
     };
-  }, [open, onOpen]);
+  }, [open, onOpen, swipeDisabled]);
 
   return (
     <>

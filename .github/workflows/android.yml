@@ -14,6 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      VITE_BUG_REPORT_ORIGIN: ${{ vars.BUG_REPORT_ORIGIN }}
       # Секреты нельзя проверить в if напрямую — через переменную задания
       KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
     steps:

@@ -67,3 +67,7 @@ npm run screenshots     # скриншоты для README
 ## Лицензии
 
 Код — MIT. Шрифты Source Serif 4 и JetBrains Mono — SIL Open Font License. Приложение не связано с Anthropic; Claude и Claude Code — продукты Anthropic.
+
+## Отчёты об ошибках
+
+Кнопка «Сообщить об ошибке» доступна в меню сессий и на экране подключения. Для отправки писем настройте [общий сервис отчётов](https://github.com/Liotto1337/claude-vm-gui/blob/main/services/bug-report/README.md).

@@ -7,6 +7,10 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import type { Platform } from '@core/platform';
 import { androidPlatformWith, type VmBridgePlugin } from './android';
 
+export const vmBridge = registerPlugin<VmBridgePlugin & {
+  bugReportDeviceInfo(): Promise<Record<string, string>>;
+}>('VmBridge');
+
 /** Статус-бар — под тему интерфейса (html[data-theme]): светлые значки на тёмной теме и наоборот. */
 function followTheme(): void {
   const apply = () => {
@@ -26,7 +30,7 @@ const rgbToHex = (rgb: string) =>
 export function androidPlatform(): Promise<Platform> {
   followTheme();
   return androidPlatformWith({
-    plugin: registerPlugin<VmBridgePlugin>('VmBridge'),
+    plugin: vmBridge,
     prefs: {
       get: async (key) => (await Preferences.get({ key })).value,
       set: (key, value) => Preferences.set({ key, value }),

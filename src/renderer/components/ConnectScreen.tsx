@@ -14,7 +14,7 @@ function StepIcon({ e }: { e?: PreflightEvent }) {
   return <span className="step-dash" aria-label="Пропущено">—</span>;
 }
 
-export function ConnectScreen() {
+export function ConnectScreen({ onReport }: { onReport: () => void }) {
   const { config, preflight, connectError } = useAppState();
   // Ключ сервера сменился: забыть сохранённый — только с явным предупреждением о подмене
   const [forget, setForget] = useState(false);
@@ -66,6 +66,7 @@ export function ConnectScreen() {
             <button type="button" className="btn" onClick={() => { void api.connection.disconnect(); openSettings(); }}>Отмена</button>
           </div>
         )}
+        <button type="button" className="btn" onClick={onReport}>Сообщить об ошибке</button>
       </section>
       {forget ? (
         <ConfirmDialog
