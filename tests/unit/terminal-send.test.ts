@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SshTransport } from '../../src/core/transport';
 import { TerminalService } from '../../src/core/terminal';
 import type { TmuxService } from '../../src/core/tmux';
@@ -29,7 +29,7 @@ function setup(field: (enters: number) => string | null) {
     probe: async () => toScreen(field(enters())),
     timings: FAST,
   });
-  return { term, enters };
+  return { term, enters, conn, stream };
 }
 
 describe('TerminalService.send: принято ли сообщение', () => {
@@ -102,5 +102,77 @@ describe('TerminalService.send сразу после выбора сессии',
     expect((await opened).ok).toBe(true);
     expect(await sent).toEqual({ ok: true, data: undefined });
     expect(enters()).toBe(1);
+  });
+});
+
+
+describe('TerminalService.send: обрыв связи и отсутствие подтверждения', () => {
+  it('связь пропала до отправки — текст в канал не пишется', async () => {
+    const { term, conn, stream } = setup(() => 'привет');
+    await term.open('s', 80, 24);
+    const write = vi.spyOn(stream, 'write');
+    conn.connected = false;
+    expect(await term.send('привет', [])).toMatchObject({ ok: false, error: { code: 'NOT_CONNECTED' } });
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('обрыв после вставки до Enter — ошибка, Enter не нажимается', async () => {
+    const { term, conn, stream, enters } = setup(() => 'привет');
+    await term.open('s', 80, 24);
+    vi.spyOn(stream, 'write').mockImplementation(() => { conn.connected = false; });
+    expect((await term.send('привет', [])).ok).toBe(false);
+    expect(enters()).toBe(0);
+  });
+
+  it('обрыв после Enter не считается доставкой, повторного Enter нет', async () => {
+    const { term, conn, enters } = setup((n) => {
+      if (n > 0) conn.connected = false;
+      return n > 0 ? '' : 'привет';
+    });
+    await term.open('s', 80, 24);
+    expect(await term.send('привет', [])).toMatchObject({ ok: false, error: { code: 'NOT_CONNECTED' } });
+    expect(enters()).toBe(1);
+  });
+
+  it('канал закрыли после Enter, но SSH ещё подключён — отправка не подтверждена', async () => {
+    const { term, stream, enters } = setup((n) => {
+      if (n > 0) stream.emit('close');
+      return n > 0 ? '' : 'привет';
+    });
+    // exitReason не обращается к настоящему tmux.
+    await term.open('s', 80, 24);
+    // После close проверка tmux вернёт ошибку соединения.
+    const list = vi.fn(async () => ({ ok: false as const, error: { code: 'NOT_CONNECTED' as const, message: 'lost' } }));
+    Object.assign((term as unknown as { tmux: object }).tmux, { list });
+    expect((await term.send('привет', [])).ok).toBe(false);
+    expect(enters()).toBe(1);
+  });
+
+  it('снимки экрана после Enter недоступны — ошибка без повторного Enter', async () => {
+    const { term, enters } = setup(() => 'привет');
+    vi.spyOn(term as unknown as { probe: (name: string) => Promise<string | null> }, 'probe')
+      .mockImplementation(async () => enters() > 0 ? null : toScreen('привет'));
+    await term.open('s', 80, 24);
+    expect(await term.send('привет', [])).toMatchObject({ ok: false, error: { code: 'SEND_NOT_CONFIRMED' } });
+    expect(enters()).toBe(1);
+  });
+
+  it('снимков нет даже до Enter — вслепую не подтверждаем отправку', async () => {
+    const { term, enters } = setup(() => 'привет');
+    vi.spyOn(term as unknown as { probe: (name: string) => Promise<string | null> }, 'probe').mockResolvedValue(null);
+    await term.open('s', 80, 24);
+    expect((await term.send('привет', [])).ok).toBe(false);
+    expect(enters()).toBe(0);
+  });
+
+  it('запись Enter выбросила исключение — возвращается ошибка, а не отклонённый Promise', async () => {
+    const { term, stream } = setup(() => 'привет');
+    const write = stream.write;
+    vi.spyOn(stream, 'write').mockImplementation((data) => {
+      if (data === '\r') throw new Error('Channel closed');
+      write(data);
+    });
+    await term.open('s', 80, 24);
+    expect(await term.send('привет', [])).toMatchObject({ ok: false, error: { message: 'Channel closed' } });
   });
 });

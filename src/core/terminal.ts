@@ -245,9 +245,11 @@ export class TerminalService extends Emitter {
     const stream = this.stream;
     const name = this.session;
     if (!stream || !name || (expected !== undefined && name !== expected)) return fail('NO_SESSION', 'Сессия не открыта');
+    if (!this.conn.connected) return fail('NOT_CONNECTED', 'Нет подключения к ВМ');
     const check = await this.checkWritable(allowMenu);
     if (!check.ok) return check;
     if (this.stream !== stream || this.session !== name) return fail('NO_SESSION', 'Сессия не открыта');
+    if (!this.conn.connected) return fail('NOT_CONNECTED', 'Нет подключения к ВМ');
     return ok({ stream, name });
   }
 
@@ -271,17 +273,25 @@ export class TerminalService extends Emitter {
     }
   }
 
+  private checkSendTarget(stream: Channel, name: string): Result<void> {
+    if (!this.conn.connected) return fail('NOT_CONNECTED', 'Связь прервалась. Проверьте в терминале, дошло ли сообщение, прежде чем повторять.');
+    if (this.stream !== stream || this.session !== name) return fail('NO_SESSION', 'Сессия не открыта');
+    return ok(undefined);
+  }
+
   /**
    * Ждёт, пока сообщение принято: поле опустело или пропало совсем
    * (Claude Code сразу показал меню — например, запрос разрешения).
    * Поле изменилось, но не пустое — это поздняя отрисовка вставки (путь стал «[Image #1]»), а не отправка.
    * 'unknown' — ни одного снимка экрана за ms: проверить нечем.
    */
-  private async accepted(name: string, ms: number): Promise<'yes' | 'no' | 'unknown'> {
+  private async accepted(name: string, stream: Channel, ms: number): Promise<'yes' | 'no' | 'unknown'> {
     let seen = false;
     for (const t = Date.now(); Date.now() - t < ms; ) {
       await sleep(this.timings.pollMs);
+      if (!this.checkSendTarget(stream, name).ok) return 'unknown';
       const screen = await this.probe(name);
+      if (!this.checkSendTarget(stream, name).ok) return 'unknown';
       if (screen === null) continue;
       seen = true;
       const now = inputText(screen);
@@ -298,6 +308,14 @@ export class TerminalService extends Emitter {
    * Поле пустое ещё до Enter — вставка не дошла: ошибка без Enter.
    */
   async send(text: string, imagePaths: string[], session?: string): Promise<Result<void>> {
+    try {
+      return await this.sendNow(text, imagePaths, session);
+    } catch (e) {
+      return fail('SEND_NOT_CONFIRMED', e instanceof Error ? e.message : 'Не удалось подтвердить отправку. Проверьте сообщение в терминале перед повтором.');
+    }
+  }
+
+  private async sendNow(text: string, imagePaths: string[], session?: string): Promise<Result<void>> {
     const data = bracketedPaste(text, imagePaths);
     const r = await this.writeChecked(() => data.slice(0, -1), session);
     if (!r.ok) return r;
@@ -306,12 +324,31 @@ export class TerminalService extends Emitter {
     const t = this.timings;
     const menuOpen = () => fail<void>('PROMPT_OPEN', PROMPT_OPEN_TEXT);
 
+    // Нет подтверждения — сохраняем черновик и не повторяем Enter автоматически.
+    const enter = async (): Promise<Result<void>> => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const before = this.checkSendTarget(stream, name);
+        if (!before.ok) return before;
+        stream.write('\r');
+        const verdict = await this.accepted(name, stream, t.confirmMs);
+        const after = this.checkSendTarget(stream, name);
+        if (!after.ok) return after;
+        if (verdict === 'yes') return ok(undefined);
+        if (verdict === 'unknown') return fail('SEND_NOT_CONFIRMED', 'Не удалось подтвердить отправку. Проверьте сообщение в терминале перед повтором.');
+      }
+      return fail('SEND_NOT_CONFIRMED', NOT_CONFIRMED_TEXT);
+    };
+
     let prev: string | null = null;
     let ready: string | null = null;
     let recognized = false;
     for (const start = Date.now(); Date.now() - start < t.settleMaxMs; ) {
       await sleep(t.pollMs);
+      const before = this.checkSendTarget(stream, name);
+      if (!before.ok) return before;
       const screen = await this.probe(name);
+      const after = this.checkSendTarget(stream, name);
+      if (!after.ok) return after;
       if (screen === null) continue;
       if (dialogOpen(screen)) return menuOpen();
       const now = inputText(screen);
@@ -325,11 +362,14 @@ export class TerminalService extends Emitter {
     // Поле не распознано (другой вид экрана) — как раньше, но с запасом на обработку вставки
     const blindEnter = async (): Promise<Result<void>> => {
       await sleep(t.fallbackMs);
+      const before = this.checkSendTarget(stream, name);
+      if (!before.ok) return before;
       const screen = await this.probe(name);
+      const after = this.checkSendTarget(stream, name);
+      if (!after.ok) return after;
       if (screen !== null && dialogOpen(screen)) return menuOpen();
-      if (this.stream !== stream || this.session !== name) return fail<void>('NO_SESSION', 'Сессия не открыта');
-      stream.write('\r');
-      return ok(undefined);
+      if (screen === null) return fail('SEND_NOT_CONFIRMED', CHECK_FAILED_TEXT);
+      return enter();
     };
     let last = ready ?? prev;
     // Распознанное поле пропало (например, bash-режим «!» рисует другое приглашение) — тоже вслепую
@@ -337,21 +377,18 @@ export class TerminalService extends Emitter {
     if (last === '') {
       // Поле всё ещё пустое: вставка медленная (большая картинка, нагруженная ВМ) или потерялась — ещё один снимок
       await sleep(t.fallbackMs);
+      const before = this.checkSendTarget(stream, name);
+      if (!before.ok) return before;
       const screen = await this.probe(name);
+      const after = this.checkSendTarget(stream, name);
+      if (!after.ok) return after;
       if (screen !== null && dialogOpen(screen)) return menuOpen();
       last = screen === null ? null : inputText(screen);
       if (last === null) return blindEnter();
       // Enter по пустому полю ничего бы не отправил, а сообщение пропало бы молча
       if (last === '') return fail('SEND_NOT_CONFIRMED', PASTE_LOST_TEXT);
     }
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (this.stream !== stream || this.session !== name) return fail('NO_SESSION', 'Сессия не открыта');
-      stream.write('\r');
-      const verdict = await this.accepted(name, t.confirmMs);
-      // Проверить нечем — Enter, скорее всего, сработал; повтор мог бы отправить сообщение дважды
-      if (verdict !== 'no') return ok(undefined);
-    }
-    return fail('SEND_NOT_CONFIRMED', NOT_CONFIRMED_TEXT);
+    return enter();
   }
 
   async setModel(value: string, session?: string): Promise<Result<void>> {

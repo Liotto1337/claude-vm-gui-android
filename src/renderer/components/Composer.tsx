@@ -3,9 +3,10 @@ import { detectTrigger, filterHints, type Trigger } from '@shared/hints';
 import type { HintCommand, Hints, ModelInfo, ParsedMenu, TmuxSession } from '@shared/ipc';
 import { isImageName, MAX_FILE_BYTES } from '@shared/upload-name';
 import { api } from '../api';
-import { addPending, dropPending, markPendingSent, refreshSessions, rememberChoice, useAppState } from '../state';
+import { refreshSessions, rememberChoice, useAppState } from '../state';
 import { revoke, type Attachment } from '../attachments';
-import { getDraft, restoreFailed, setDraft, updateDraft, useDraft } from '../drafts';
+import { updateDraft, useDraft } from '../drafts';
+import { sendDraft } from '../send-draft';
 import { AttachmentChip } from './AttachmentChip';
 import { BottomSheet } from './BottomSheet';
 import { ChoiceList, ChoiceMenu, type Choice } from './ChoiceMenu';
@@ -20,8 +21,6 @@ const FALLBACK_MODELS: ModelInfo[] = [
   { value: 'sonnet', displayName: 'Sonnet', description: '', efforts: [] },
 ];
 const FALLBACK_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-/** Команды, которых нет в ленте: пузырь «отправлено» им не нужен */
-const HIDDEN_COMMAND = /^\/context(\s|$)/;
 const enterSends = import.meta.env.MODE !== 'android';
 
 /**
@@ -132,25 +131,15 @@ export function Composer({ session, menu = null, working = false, chatMode = fal
     if (!canSend || sending.current) return;
     sending.current = true;
     setBusy(true);
-    // Сообщение сразу в ленте (темнее), а поле — сразу пустое: можно набирать следующее, пока идёт отправка
-    const sent = getDraft(session.name);
-    // /context в ленте не показывается (его данные — в панели «Контекст»), пузырь ему не нужен
-    const pendingId = HIDDEN_COMMAND.test(text.trim()) ? null : addPending(session.name, text.trim(), ready.map((a) => a.remotePath!));
-    setDraft(session.name, { text: '', attachments: [] });
-    setTextAndCaret('', 0);
-    const r = await api.term.send(sent.text, ready.map((a) => a.remotePath!), session.name).finally(() => {
+    setCaret(0);
+    setDismissed(null);
+    try {
+      const r = await sendDraft(session.name);
+      setSendError(r.ok ? null : r.error.message);
+    } finally {
       sending.current = false;
       setBusy(false);
-    });
-    if (!r.ok) {
-      if (pendingId) dropPending(session.name, pendingId);
-      setSendError(r.error.message);
-      restoreFailed(session.name, sent);
-      return;
     }
-    if (pendingId) markPendingSent(session.name, pendingId);
-    setSendError(null);
-    for (const a of sent.attachments) revoke(a);
   };
 
   const upload = async (a: Attachment) => {
